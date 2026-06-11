@@ -281,7 +281,12 @@ def _change_row(change: dict) -> QWidget:
 
     diff = QHBoxLayout()
     diff.setSpacing(9)
-    if change["kind"] == "create":
+    if change["kind"] == "flag":
+        # Changed, but the audit table stores no value (e.g. a collection).
+        badge = QLabel("변경됨")
+        badge.setObjectName("flagChanged")
+        diff.addWidget(badge)
+    elif change["kind"] == "create":
         diff.addWidget(value_pill(change["new"], "new"))
         tag = QLabel("신규")
         tag.setObjectName("tag")

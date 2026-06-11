@@ -97,6 +97,15 @@ def _change(col, old, new, kind):
     }
 
 
+def _flag_change(label):
+    """A change with no stored old/new value — only that it changed.
+
+    Used for _MOD flags that have no value column in the audit table (audited
+    collections / relations), so we can report the change but not a diff.
+    """
+    return {"column": label, "label": label, "old": None, "new": None, "kind": "flag"}
+
+
 def build_timeline(rows: list[dict], classification: dict) -> list[dict]:
     """Build an ordered list of revision nodes from raw audit rows.
 
@@ -106,6 +115,7 @@ def build_timeline(rows: list[dict], classification: dict) -> list[dict]:
     rev_col = classification["rev_column"]
     revtype_col = classification["revtype_column"]
     data_cols = classification["data_columns"]
+    orphan_flags = classification.get("orphan_mod_flags", [])
 
     state: dict = {}
     timeline: list[dict] = []
@@ -128,6 +138,9 @@ def build_timeline(rows: list[dict], classification: dict) -> list[dict]:
                 if val is not None:
                     changes.append(_change(dc["name"], None, val, "create"))
                 state[dc["name"]] = val
+            for of in orphan_flags:
+                if _truthy(row.get(of["name"])):
+                    changes.append(_flag_change(of["label"]))
 
         elif rtype == 2:  # DEL — record vanished; carry snapshot untouched
             pass
@@ -145,6 +158,9 @@ def build_timeline(rows: list[dict], classification: dict) -> list[dict]:
                         _change(dc["name"], state.get(dc["name"]), val, "update")
                     )
                 state[dc["name"]] = val
+            for of in orphan_flags:
+                if _truthy(row.get(of["name"])):
+                    changes.append(_flag_change(of["label"]))
 
         timeline.append(
             {

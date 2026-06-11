@@ -123,6 +123,40 @@ def test_epoch_millis_formats_in_kst():
     assert tl[0]["timestamp"] == "2024-01-08 09:12:30"
 
 
+def test_orphan_mod_flag_shows_changed_without_diff():
+    # checkpoints_mod has no `checkpoints` value column (audited collection).
+    cls = {
+        "rev_column": "REV", "revtype_column": "REVTYPE",
+        "data_columns": [{"name": "name", "type": "varchar", "mod_flag": "name_mod"}],
+        "orphan_mod_flags": [{"name": "checkpoints_mod", "label": "checkpoints"}],
+    }
+    rows = [
+        {"REV": 1, "REVTYPE": 0, "name": "a", "name_mod": 1, "checkpoints_mod": 0},
+        {"REV": 2, "REVTYPE": 1, "name": "a", "name_mod": 0, "checkpoints_mod": 1},
+    ]
+    tl = build_timeline(rows, cls)
+    rev2 = tl[1]["changes"]
+    assert len(rev2) == 1                      # no longer "변경된 컬럼이 없습니다"
+    assert rev2[0]["kind"] == "flag"
+    assert rev2[0]["label"] == "checkpoints"
+    assert rev2[0]["old"] is None and rev2[0]["new"] is None
+
+
+def test_classify_detects_orphan_mod_flag():
+    from audviewer.introspect import classify  # noqa: PLC0415
+    cols = [
+        {"name": "id", "type": "bigint", "nullable": False, "key": "PRI", "comment": ""},
+        {"name": "name", "type": "varchar", "nullable": True, "key": "", "comment": ""},
+        {"name": "name_mod", "type": "bit", "nullable": True, "key": "", "comment": ""},
+        {"name": "checkpoints_mod", "type": "bit", "nullable": True, "key": "", "comment": ""},
+        {"name": "REV", "type": "int", "nullable": False, "key": "PRI", "comment": ""},
+        {"name": "REVTYPE", "type": "tinyint", "nullable": True, "key": "", "comment": ""},
+    ]
+    cls = classify(cols, ["id", "REV"])
+    assert [c["name"] for c in cls["data_columns"]] == ["name"]
+    assert cls["orphan_mod_flags"] == [{"name": "checkpoints_mod", "label": "checkpoints"}]
+
+
 def test_summary():
     tl = build_timeline(ROWS, CLASSIFICATION)
     s = summarize(tl, "id", "42")

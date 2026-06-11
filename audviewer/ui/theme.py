@@ -114,6 +114,7 @@ QLabel#valNew {{ background: #e7f7ec; color: {C['green_text']}; border: 1px soli
 QLabel#valNull {{ background: {C['surface2']}; color: {C['text_faint']}; border: 1px solid {C['border_strong']}; border-radius: 7px; padding: 3px 9px; font-size: 12px; font-family: {MONO}; }}
 QLabel#arrow {{ color: {C['text_faint']}; font-size: 15px; font-weight: 700; }}
 QLabel#tag {{ background: #eceaff; color: {C['primary_700']}; border-radius: 5px; padding: 2px 7px; font-size: 10px; font-weight: 700; }}
+QLabel#flagChanged {{ background: #e8f0fe; color: #1d4ed8; border: 1px solid #cfe0fb; border-radius: 7px; padding: 3px 10px; font-size: 12px; font-weight: 600; }}
 QLabel#delNote {{ color: #b91c1c; font-weight: 600; font-size: 13px; }}
 QLabel#noChange {{ color: {C['text_faint']}; font-size: 12px; font-style: italic; }}
 QLabel#emptyTitle {{ color: {C['text_soft']}; font-size: 14px; }}

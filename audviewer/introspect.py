@@ -181,6 +181,16 @@ def classify(columns: list[dict], pk_columns: list[str]) -> dict:
             {"name": c["name"], "type": c["type"], "mod_flag": mod_flag}
         )
 
+    # _MOD flags with no stored value column (e.g. audited collections /
+    # relations) — we can only report THAT they changed, not an old->new value.
+    data_lower = {dc["name"].lower() for dc in data_columns}
+    orphan_mod_flags = []
+    for c in mod_flags:
+        base = c["name"][:-4]  # strip the trailing _MOD / _mod
+        bl = base.lower()
+        if bl and bl not in data_lower and bl not in ident_lower and bl not in _SYSTEM_NAMES:
+            orphan_mod_flags.append({"name": c["name"], "label": base})
+
     identifier_default = identifier_columns[0] if identifier_columns else None
     return {
         "rev_column": rev_column,
@@ -190,6 +200,7 @@ def classify(columns: list[dict], pk_columns: list[str]) -> dict:
         "data_columns": data_columns,
         "system_columns": [{"name": c["name"], "type": c["type"]} for c in system],
         "mod_flag_columns": [c["name"] for c in mod_flags],
+        "orphan_mod_flags": orphan_mod_flags,
         "has_mod_flags": bool(mod_flags),
     }
 

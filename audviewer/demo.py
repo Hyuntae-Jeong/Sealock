@@ -34,6 +34,7 @@ def preview() -> dict:
             {"name": "REV", "type": "int(11)"},
             {"name": "REVTYPE", "type": "tinyint(4)"},
         ],
+        "orphan_mod_flags": [],
         "revinfo": {"found": True, "table": "REVINFO", "rev_column": "REV", "ts_column": "REVTSTMP"},
         "all_columns": [{"name": "id", "type": "bigint(20)"}],
     }
