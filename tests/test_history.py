@@ -92,6 +92,37 @@ def test_fallback_without_mod_flags_uses_value_diff():
     assert tl[2]["changes"][0]["old"] == 10 and tl[2]["changes"][0]["new"] == 20
 
 
+def test_bit_bytes_value_renders_numeric():
+    cls = {"rev_column": "REV", "revtype_column": "REVTYPE",
+           "data_columns": [{"name": "enabled", "type": "bit(1)", "mod_flag": None}]}
+    rows = [
+        {"REV": 1, "REVTYPE": 0, "enabled": b"\x01"},
+        {"REV": 2, "REVTYPE": 1, "enabled": b"\x00"},
+    ]
+    tl = build_timeline(rows, cls)
+    assert tl[0]["changes"][0]["new"] == "1"            # BIT -> "1", not a box
+    assert tl[1]["changes"][0]["old"] == "1"
+    assert tl[1]["changes"][0]["new"] == "0"
+
+
+def test_zero_or_missing_timestamp_is_none():
+    cls = {"rev_column": "REV", "revtype_column": "REVTYPE",
+           "data_columns": [{"name": "x", "type": "int", "mod_flag": None}]}
+    rows = [{"REV": 1, "REVTYPE": 0, "x": 1, "__revts": 0},
+            {"REV": 2, "REVTYPE": 1, "x": 2, "__revts": None}]
+    tl = build_timeline(rows, cls)
+    assert tl[0]["timestamp"] is None                    # epoch 0 -> not "1970-..."
+    assert tl[1]["timestamp"] is None
+
+
+def test_epoch_millis_formats_in_kst():
+    cls = {"rev_column": "REV", "revtype_column": "REVTYPE",
+           "data_columns": [{"name": "x", "type": "int", "mod_flag": None}]}
+    # 1704672750000 ms = 2024-01-08 09:12:30 KST
+    tl = build_timeline([{"REV": 1, "REVTYPE": 0, "x": 1, "__revts": 1704672750000}], cls)
+    assert tl[0]["timestamp"] == "2024-01-08 09:12:30"
+
+
 def test_summary():
     tl = build_timeline(ROWS, CLASSIFICATION)
     s = summarize(tl, "id", "42")

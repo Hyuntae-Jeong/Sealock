@@ -13,6 +13,9 @@ from __future__ import annotations
 import datetime as _dt
 from decimal import Decimal
 
+# Korea Standard Time (UTC+9, no DST) — epoch timestamps are rendered in KST.
+_KST = _dt.timezone(_dt.timedelta(hours=9))
+
 REVTYPE_META = {
     0: {"label": "CREATED", "ko": "생성", "kind": "create"},
     1: {"label": "MODIFIED", "ko": "수정", "kind": "update"},
@@ -42,20 +45,44 @@ def _display(v):
     if isinstance(v, Decimal):
         return str(v)
     if isinstance(v, (bytes, bytearray)):
+        # BIT / binary columns arrive as bytes; show printable text as-is,
+        # otherwise render numerically (BIT(1) -> "0"/"1") or as hex.
         try:
-            return v.decode("utf-8", "replace")
-        except Exception:  # noqa: BLE001
-            return v.hex()
+            s = v.decode("utf-8")
+            if s == "" or s.isprintable():
+                return s
+        except UnicodeDecodeError:
+            pass
+        if len(v) <= 8:
+            return str(int.from_bytes(v, "big"))
+        return v.hex()
     if isinstance(v, (_dt.datetime, _dt.date, _dt.time)):
         return v.isoformat(sep=" ") if isinstance(v, _dt.datetime) else v.isoformat()
     return str(v)
 
 
-def _format_ts(ms):
-    if ms is None:
+def _format_ts(value):
+    """Render a revision timestamp in KST.
+
+    Accepts an epoch value (milliseconds or seconds) from a REVINFO bigint, or a
+    datetime/date from a DATETIME/TIMESTAMP revision column. 0 or negative is
+    treated as "missing" (returns None) so a join miss never shows 1970-01-01.
+    """
+    if value is None:
         return None
+    if isinstance(value, _dt.datetime):
+        return value.strftime("%Y-%m-%d %H:%M:%S")
+    if isinstance(value, _dt.date):
+        return value.isoformat()
     try:
-        return _dt.datetime.fromtimestamp(int(ms) / 1000).strftime("%Y-%m-%d %H:%M:%S")
+        n = int(value)
+    except (TypeError, ValueError):
+        return None
+    if n <= 0:
+        return None
+    secs = n / 1000 if n >= 1_000_000_000_000 else n  # >= 1e12 -> milliseconds
+    try:
+        return _dt.datetime.fromtimestamp(secs, _KST).strftime("%Y-%m-%d %H:%M:%S")
     except (ValueError, OverflowError, OSError):
         return None
 

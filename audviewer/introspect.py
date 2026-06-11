@@ -89,9 +89,19 @@ def get_pk_columns(db: Database, table: str) -> list[str]:
 
 # ── REVINFO discovery ───────────────────────────────────────────────────
 def find_revinfo(db: Database) -> dict:
-    """Locate the REVINFO table and figure out its REV / timestamp columns."""
+    """Locate the revision-info table and its REV / timestamp columns.
+
+    The timestamp may be a BIGINT epoch (default Envers REVTSTMP) or a
+    DATETIME/TIMESTAMP column (common with custom revision entities), so we try
+    several strategies rather than assuming the default name/type.
+    """
     tables = list_tables(db)
     target = next((t for t in tables if t.lower() == "revinfo"), None)
+    if not target:
+        target = next(
+            (t for t in tables if t.lower() in ("revision", "rev_info", "revision_info", "revisions")),
+            None,
+        )
     if not target:
         return {"found": False}
 
@@ -103,17 +113,33 @@ def find_revinfo(db: Database) -> dict:
         or (get_pk_columns(db, target) or [None])[0]
         or (cols[0]["name"] if cols else None)
     )
-    # Prefer the conventional REVTSTMP, else the first BIGINT-ish column.
-    ts_col = by_lower.get("revtstmp", {}).get("name")
-    if not ts_col:
-        ts_col = next(
-            (c["name"] for c in cols if "bigint" in c["type"].lower()), None
-        )
+
+    # Pick the timestamp column — never the REV column itself.
+    candidates = [c for c in cols if c["name"] != rev_col]
+
+    def _pick():
+        for c in candidates:                       # 1) conventional Envers name
+            if c["name"].lower() == "revtstmp":
+                return c
+        for c in candidates:                       # 2) name hints
+            n = c["name"].lower()
+            if "tstmp" in n or "timestamp" in n or "time" in n or n in ("created", "created_at", "reg_date", "rev_date"):
+                return c
+        for c in candidates:                       # 3) DATETIME / TIMESTAMP type
+            if any(t in c["type"].lower() for t in ("datetime", "timestamp")):
+                return c
+        for c in candidates:                       # 4) BIGINT epoch
+            if "bigint" in c["type"].lower():
+                return c
+        return None
+
+    ts = _pick()
     return {
         "found": True,
         "table": target,
         "rev_column": rev_col,
-        "ts_column": ts_col,
+        "ts_column": ts["name"] if ts else None,
+        "ts_type": ts["type"] if ts else None,
     }
 
 
