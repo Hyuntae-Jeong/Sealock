@@ -177,7 +177,7 @@ class TablePage(QWidget):
 
         inp = QHBoxLayout()
         inp.setSpacing(12)
-        tw, self.table_name = field("테이블 이름", "member_AUD")
+        tw, self.table_name = field("테이블 이름", "이름 입력 또는 아래 목록에서 선택")
         inp.addWidget(tw, 1)
         cv.addLayout(inp)
 
@@ -238,9 +238,11 @@ class TablePage(QWidget):
         clear_layout(self.chips_flow)
         self._all_aud_tables = []
         self.chips_caption.setText("_AUD 테이블 불러오는 중…")
+        # Empty by default; demo pre-fills its sample table. (Set before the
+        # async fill so the chip filter starts from the right text.)
+        self.table_name.setText("member_AUD" if self.state.demo else "")
         run_async(services.list_aud_tables, self._fill_chips, self._chips_error, self.state)
         if self.state.demo:
-            self.table_name.setText("member_AUD")
             self._preview()
         else:
             self.table_name.setFocus()
