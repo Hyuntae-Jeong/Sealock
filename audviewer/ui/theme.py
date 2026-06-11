@@ -130,4 +130,5 @@ QScrollBar::handle:vertical:hover {{ background: #b9bfd2; }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QLabel#toast {{ background: #2a2f4a; color: #ffffff; border-radius: 11px; padding: 12px 18px; font-size: 13px; font-weight: 600; }}
 QLabel#toastErr {{ background: #b3261e; color: #ffffff; border-radius: 11px; padding: 12px 18px; font-size: 13px; font-weight: 600; }}
+QLabel#copyToast {{ color: #5b6178; font-size: 12px; font-weight: 700; }}
 """

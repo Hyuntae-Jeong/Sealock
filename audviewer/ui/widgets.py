@@ -1,12 +1,13 @@
 """Reusable Qt widgets and helpers: async worker, stepper, timeline pieces."""
 from __future__ import annotations
 
-from PySide6.QtCore import (QObject, QPoint, QRect, QRectF, QRunnable, QSize, Qt,
-                            QThreadPool, Signal)
+from PySide6.QtCore import (QEasingCurve, QObject, QPoint, QPropertyAnimation,
+                            QRect, QRectF, QRunnable, QSize, Qt, QThreadPool,
+                            QTimer, Signal)
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
-from PySide6.QtWidgets import (QFrame, QGraphicsDropShadowEffect, QHBoxLayout,
-                               QLabel, QLayout, QLineEdit, QPushButton,
-                               QSizePolicy, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QApplication, QFrame, QGraphicsDropShadowEffect,
+                               QHBoxLayout, QLabel, QLayout, QLineEdit,
+                               QPushButton, QSizePolicy, QVBoxLayout, QWidget)
 
 from .theme import C
 
@@ -248,12 +249,72 @@ class _Rail(QWidget):
         p.drawText(QRectF(cx - r, cy - r, 2 * r, 2 * r), Qt.AlignCenter, self.glyph)
 
 
+# ── click-to-copy ───────────────────────────────────────────────────────
+_toasts: list = []  # keep live toasts referenced until they finish fading
+
+
+class _CopyToast(QLabel):
+    """A frameless 'copied' toast — text only (no background), shown near the
+    cursor. Text paints fine on a translucent top-level even though a QSS
+    background would not."""
+
+    def __init__(self, text: str):
+        super().__init__(text, None, Qt.ToolTip | Qt.FramelessWindowHint)
+        self.setObjectName("copyToast")
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WA_ShowWithoutActivating)
+        self.setAlignment(Qt.AlignCenter)
+
+
+def copy_value(text: str, global_pos: QPoint) -> None:
+    """Copy text to the clipboard and flash a fading toast near the cursor."""
+    QApplication.clipboard().setText(str(text))
+
+    toast = _CopyToast("복사됨")
+    _toasts.append(toast)
+    toast.adjustSize()
+    # Sit right above the top tip of the mouse pointer.
+    toast.move(max(4, global_pos.x() - toast.width() // 2),
+               max(4, global_pos.y() - toast.height() - 2))
+    toast.show()
+    toast.raise_()
+
+    # Hold at full for ~1s, then fade the whole toast out gently.
+    anim = QPropertyAnimation(toast, b"windowOpacity", toast)
+    anim.setDuration(700)
+    anim.setStartValue(1.0)
+    anim.setEndValue(0.0)
+    anim.setEasingCurve(QEasingCurve.InOutQuad)
+
+    def _done():
+        toast.close()
+        if toast in _toasts:
+            _toasts.remove(toast)
+
+    anim.finished.connect(_done)
+    toast._anim = anim  # keep referenced
+    QTimer.singleShot(1000, anim.start)
+
+
+class _CopyableLabel(QLabel):
+    """A value pill that copies its text to the clipboard when clicked."""
+
+    def __init__(self, text: str):
+        super().__init__(text)
+        self.setCursor(Qt.PointingHandCursor)
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.LeftButton:
+            copy_value(self.text(), e.globalPosition().toPoint())
+        super().mousePressEvent(e)
+
+
 def value_pill(value, variant: str) -> QLabel:
     if value is None:
         lab = QLabel("∅ null")
         lab.setObjectName("valNull")
     else:
-        lab = QLabel(str(value))
+        lab = _CopyableLabel(str(value))
         lab.setObjectName("valOld" if variant == "old" else "valNew")
         if variant == "old":
             f = lab.font()
