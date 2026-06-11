@@ -100,7 +100,8 @@ QLabel#flagNo {{ color: {C['text_faint']}; font-size: 12px; }}
 QFrame#summaryBar {{ background: #f1f3fb; border: 1px solid {C['border']}; border-radius: 10px; }}
 QLabel#sumK {{ color: {C['text_faint']}; font-size: 11px; font-weight: 600; }}
 QLabel#sumV {{ color: {C['text']}; font-size: 16px; font-weight: 700; }}
-QFrame#tlCard {{ background: {C['surface']}; border: 1px solid {C['border']}; border-radius: 10px; }}
+QFrame#tlCard {{ background: {C['surface']}; border: 1px solid {C['border']}; border-radius: 10px; outline: none; }}
+QFrame#tlCard[selected="true"] {{ border: 1px solid {C['primary']}; background: #f4f3fe; }}
 QFrame#tlHead {{ border: none; border-bottom: 1px solid {C['border']}; }}
 QLabel#revChip {{ background: {C['surface2']}; border: 1px solid {C['border_strong']}; color: {C['text_soft']};
     border-radius: 6px; padding: 2px 9px; font-size: 12px; font-weight: 700; font-family: {MONO}; }}

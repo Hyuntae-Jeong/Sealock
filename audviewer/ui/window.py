@@ -1,16 +1,17 @@
 """Main window and the three wizard pages (connection / table / history)."""
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtWidgets import (QComboBox, QFrame, QGridLayout, QHBoxLayout,
-                               QLabel, QLineEdit, QMainWindow, QPushButton,
-                               QScrollArea, QSizePolicy, QStackedWidget,
-                               QVBoxLayout, QWidget)
+from PySide6.QtCore import QEvent, QPoint, Qt, QTimer, Signal
+from PySide6.QtGui import QCursor
+from PySide6.QtWidgets import (QApplication, QComboBox, QFrame, QGridLayout,
+                               QHBoxLayout, QLabel, QLineEdit, QMainWindow,
+                               QPushButton, QScrollArea, QSizePolicy,
+                               QStackedWidget, QVBoxLayout, QWidget)
 
 from .. import services
 from ..services import AppState
-from .widgets import (FlowLayout, Stepper, button, clear_layout, field,
-                      meta_badge, name_column_width, repolish, run_async,
+from .widgets import (FlowLayout, Stepper, TimelineCard, button, clear_layout,
+                      field, meta_badge, name_column_width, repolish, run_async,
                       soft_shadow, summary_bar, timeline_node)
 
 
@@ -423,6 +424,8 @@ class HistoryPage(QWidget):
     def __init__(self, state: AppState):
         super().__init__()
         self.state = state
+        self._cards: list[TimelineCard] = []
+        self._selected = -1
 
         card = QFrame()
         card.setObjectName("card")
@@ -467,13 +470,13 @@ class HistoryPage(QWidget):
         self.result_layout = QVBoxLayout(self.result_container)
         self.result_layout.setContentsMargins(0, 0, 4, 0)
         self.result_layout.setSpacing(0)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setWidget(self.result_container)
-        scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._scroll = QScrollArea()
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setWidget(self.result_container)
+        self._scroll.setFrameShape(QFrame.NoFrame)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         cv.addSpacing(8)
-        cv.addWidget(scroll, 1)
+        cv.addWidget(self._scroll, 1)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 24, 24, 24)
@@ -482,6 +485,8 @@ class HistoryPage(QWidget):
         self.load_btn.clicked.connect(self._load)
         self.id_edit.returnPressed.connect(self._load)
         self.back_btn.clicked.connect(self.back.emit)
+        # Deselect the focused card when clicking anywhere outside the cards.
+        QApplication.instance().installEventFilter(self)
 
     def on_enter(self) -> None:
         ctx = self.state.context or {}
@@ -514,6 +519,8 @@ class HistoryPage(QWidget):
 
     def _render(self, r: dict) -> None:
         clear_layout(self.result_layout)
+        self._cards = []
+        self._selected = -1
         self.result_layout.addSpacing(20)
         self.result_layout.addWidget(summary_bar(r["summary"], r["identifier"]))
         self.result_layout.addSpacing(22)
@@ -526,9 +533,71 @@ class HistoryPage(QWidget):
         hv.setContentsMargins(2, 0, 0, 0)
         hv.setSpacing(0)
         for i, node in enumerate(tl):
-            hv.addWidget(timeline_node(node, first=(i == 0), last=(i == len(tl) - 1), name_width=name_w))
+            wrap, cardw = timeline_node(node, first=(i == 0), last=(i == len(tl) - 1), name_width=name_w)
+            self._cards.append(cardw)
+            cardw.activated.connect(self._on_card_activated)
+            cardw.navigate.connect(self._on_navigate)
+            hv.addWidget(wrap)
         self.result_layout.addWidget(holder)
         self.result_layout.addStretch(1)
+
+    # ── card selection / keyboard navigation ────────────────────────────
+    def _on_card_activated(self, card) -> None:
+        try:
+            self._select(self._cards.index(card))
+        except ValueError:
+            pass
+
+    def _select(self, idx: int) -> None:
+        if not (0 <= idx < len(self._cards)):
+            return
+        if 0 <= self._selected < len(self._cards):
+            self._cards[self._selected].set_selected(False)
+        self._selected = idx
+        card = self._cards[idx]
+        card.set_selected(True)
+        card.setFocus()
+        self._reveal(card)
+
+    def _reveal(self, card) -> None:
+        """Scroll the card into view, keeping its header (top) visible — even
+        when the card is taller than the viewport."""
+        sb = self._scroll.verticalScrollBar()
+        vp_h = self._scroll.viewport().height()
+        if vp_h <= 0:
+            return
+        top = card.mapTo(self.result_container, QPoint(0, 0)).y()
+        bottom = top + card.height()
+        cur = sb.value()
+        margin = 12
+        if card.height() >= vp_h - margin or top < cur + margin:
+            sb.setValue(max(0, top - margin))            # align header to the top
+        elif bottom > cur + vp_h - margin:
+            sb.setValue(min(sb.maximum(), bottom - vp_h + margin))
+
+    def _on_navigate(self, delta: int) -> None:
+        if self._selected < 0:
+            return
+        self._select(max(0, min(self._selected + delta, len(self._cards) - 1)))
+
+    def _deselect(self) -> None:
+        if 0 <= self._selected < len(self._cards):
+            self._cards[self._selected].set_selected(False)
+        self._selected = -1
+
+    @staticmethod
+    def _within_card(w) -> bool:
+        while w is not None:
+            if isinstance(w, TimelineCard):
+                return True
+            w = w.parentWidget()
+        return False
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.MouseButtonPress and self._selected >= 0:
+            if not self._within_card(QApplication.widgetAt(QCursor.pos())):
+                self._deselect()
+        return False
 
     def _placeholder(self) -> None:
         ident = self.id_caption.text()
@@ -541,6 +610,8 @@ class HistoryPage(QWidget):
 
     def _center_message(self, glyph: str, title: str, sub: str) -> None:
         clear_layout(self.result_layout)
+        self._cards = []
+        self._selected = -1
         self.result_layout.addStretch(1)
         em = QLabel(glyph)
         em.setAlignment(Qt.AlignCenter)

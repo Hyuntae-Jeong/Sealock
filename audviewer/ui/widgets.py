@@ -373,7 +373,79 @@ def _change_row(change: dict, name_width: int = 150) -> QWidget:
     return row
 
 
-def timeline_node(node: dict, first: bool, last: bool, name_width: int = 150) -> QWidget:
+class TimelineCard(QFrame):
+    """One revision card. Click to select (focus mode); Up/Down navigate revs."""
+
+    activated = Signal(object)   # emits self when clicked
+    navigate = Signal(int)       # emits -1 (up) / +1 (down) on arrow keys
+
+    def __init__(self, node: dict, name_width: int = 150):
+        super().__init__()
+        self.setObjectName("tlCard")
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+        self.setFocusPolicy(Qt.StrongFocus)
+        cv = QVBoxLayout(self)
+        cv.setContentsMargins(0, 0, 0, 0)
+        cv.setSpacing(0)
+
+        head = QFrame()
+        head.setObjectName("tlHead")
+        hh = QHBoxLayout(head)
+        hh.setContentsMargins(14, 10, 14, 10)
+        hh.setSpacing(10)
+        rev = QLabel(f"REV {node['rev']}")
+        rev.setObjectName("revChip")
+        tchip = QLabel(_KIND_KO.get(node["kind"], ""))
+        tchip.setObjectName({"create": "typeCreate", "update": "typeUpdate", "delete": "typeDelete"}[node["kind"]])
+        time = QLabel(node.get("timestamp") or f"REV {node['rev']}")
+        time.setObjectName("tlTime")
+        hh.addWidget(rev)
+        hh.addWidget(tchip)
+        hh.addStretch(1)
+        hh.addWidget(time)
+        cv.addWidget(head)
+
+        body = QWidget()
+        bv = QVBoxLayout(body)
+        bv.setContentsMargins(14, 4, 14, 8)
+        bv.setSpacing(0)
+        if node["kind"] == "delete":
+            note = QLabel("🗑  이 시점에 레코드가 삭제되었습니다.")
+            note.setObjectName("delNote")
+            bv.addWidget(note)
+        elif not node["changes"]:
+            nc = QLabel("변경된 컬럼이 없습니다.")
+            nc.setObjectName("noChange")
+            bv.addWidget(nc)
+        else:
+            for i, ch in enumerate(node["changes"]):
+                r = _change_row(ch, name_width)
+                if i < len(node["changes"]) - 1:
+                    r.setStyleSheet("border-bottom: 1px dashed #e9ecf4;")
+                bv.addWidget(r)
+        cv.addWidget(body)
+
+    def set_selected(self, on: bool) -> None:
+        self.setProperty("selected", bool(on))
+        repolish(self)
+
+    def mousePressEvent(self, e):
+        self.activated.emit(self)
+        super().mousePressEvent(e)
+
+    def keyPressEvent(self, e):
+        if e.key() == Qt.Key_Up:
+            self.navigate.emit(-1)
+            e.accept()
+        elif e.key() == Qt.Key_Down:
+            self.navigate.emit(1)
+            e.accept()
+        else:
+            super().keyPressEvent(e)
+
+
+def timeline_node(node: dict, first: bool, last: bool, name_width: int = 150):
+    """Return (wrap, card): the rail+card row, and the selectable TimelineCard."""
     wrap = QWidget()
     outer = QHBoxLayout(wrap)
     outer.setContentsMargins(0, 0, 0, 0)
@@ -386,56 +458,12 @@ def timeline_node(node: dict, first: bool, last: bool, name_width: int = 150) ->
     rv = QVBoxLayout(right)
     rv.setContentsMargins(0, 0, 0, 0)
     rv.setSpacing(0)
-
-    card = QFrame()
-    card.setObjectName("tlCard")
-    card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
-    cv = QVBoxLayout(card)
-    cv.setContentsMargins(0, 0, 0, 0)
-    cv.setSpacing(0)
-
-    head = QFrame()
-    head.setObjectName("tlHead")
-    hh = QHBoxLayout(head)
-    hh.setContentsMargins(14, 10, 14, 10)
-    hh.setSpacing(10)
-    rev = QLabel(f"REV {node['rev']}")
-    rev.setObjectName("revChip")
-    tchip = QLabel(_KIND_KO.get(node["kind"], ""))
-    tchip.setObjectName({"create": "typeCreate", "update": "typeUpdate", "delete": "typeDelete"}[node["kind"]])
-    time = QLabel(node.get("timestamp") or f"REV {node['rev']}")
-    time.setObjectName("tlTime")
-    hh.addWidget(rev)
-    hh.addWidget(tchip)
-    hh.addStretch(1)
-    hh.addWidget(time)
-    cv.addWidget(head)
-
-    body = QWidget()
-    bv = QVBoxLayout(body)
-    bv.setContentsMargins(14, 4, 14, 8)
-    bv.setSpacing(0)
-    if node["kind"] == "delete":
-        note = QLabel("🗑  이 시점에 레코드가 삭제되었습니다.")
-        note.setObjectName("delNote")
-        bv.addWidget(note)
-    elif not node["changes"]:
-        nc = QLabel("변경된 컬럼이 없습니다.")
-        nc.setObjectName("noChange")
-        bv.addWidget(nc)
-    else:
-        for i, ch in enumerate(node["changes"]):
-            r = _change_row(ch, name_width)
-            if i < len(node["changes"]) - 1:
-                r.setStyleSheet("border-bottom: 1px dashed #e9ecf4;")
-            bv.addWidget(r)
-    cv.addWidget(body)
-
+    card = TimelineCard(node, name_width)
     rv.addWidget(card)
     if not last:
         rv.addSpacing(18)
     outer.addWidget(right, 1)
-    return wrap
+    return wrap, card
 
 
 def summary_bar(summary: dict, identifier: dict) -> QFrame:
