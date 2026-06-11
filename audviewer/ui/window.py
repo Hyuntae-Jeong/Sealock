@@ -10,8 +10,8 @@ from PySide6.QtWidgets import (QComboBox, QFrame, QGridLayout, QHBoxLayout,
 from .. import services
 from ..services import AppState
 from .widgets import (FlowLayout, Stepper, button, clear_layout, field,
-                      meta_badge, repolish, run_async, soft_shadow,
-                      summary_bar, timeline_node)
+                      meta_badge, name_column_width, repolish, run_async,
+                      soft_shadow, summary_bar, timeline_node)
 
 
 def _title(text: str) -> QLabel:
@@ -518,12 +518,15 @@ class HistoryPage(QWidget):
         self.result_layout.addWidget(summary_bar(r["summary"], r["identifier"]))
         self.result_layout.addSpacing(22)
         tl = r["timeline"]
+        # Align value pills into a column: size every name cell to the widest
+        # column name across the whole timeline.
+        name_w = name_column_width([c["label"] for n in tl for c in n["changes"]])
         holder = QWidget()
         hv = QVBoxLayout(holder)
         hv.setContentsMargins(2, 0, 0, 0)
         hv.setSpacing(0)
         for i, node in enumerate(tl):
-            hv.addWidget(timeline_node(node, first=(i == 0), last=(i == len(tl) - 1)))
+            hv.addWidget(timeline_node(node, first=(i == 0), last=(i == len(tl) - 1), name_width=name_w))
         self.result_layout.addWidget(holder)
         self.result_layout.addStretch(1)
 

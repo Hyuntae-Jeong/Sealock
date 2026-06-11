@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import (QObject, QPoint, QRect, QRectF, QRunnable, QSize, Qt,
                             QThreadPool, Signal)
-from PySide6.QtGui import QColor, QFont, QPainter, QPen
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
 from PySide6.QtWidgets import (QFrame, QGraphicsDropShadowEffect, QHBoxLayout,
                                QLabel, QLayout, QLineEdit, QPushButton,
                                QSizePolicy, QVBoxLayout, QWidget)
@@ -264,7 +264,18 @@ def value_pill(value, variant: str) -> QLabel:
     return lab
 
 
-def _change_row(change: dict) -> QWidget:
+def name_column_width(labels) -> int:
+    """Width for the column-name cell: wide enough for the longest name in the
+    timeline (so values line up in a column), clamped to a sane range."""
+    f = QFont("Consolas")
+    f.setPixelSize(13)
+    f.setWeight(QFont.Weight.DemiBold)
+    fm = QFontMetrics(f)
+    widest = max((fm.horizontalAdvance(str(x)) for x in labels), default=0)
+    return max(150, min(widest + 10, 400))
+
+
+def _change_row(change: dict, name_width: int = 150) -> QWidget:
     row = QWidget()
     h = QHBoxLayout(row)
     h.setContentsMargins(0, 7, 0, 7)
@@ -273,8 +284,7 @@ def _change_row(change: dict) -> QWidget:
     name = QLabel(change["label"])
     name.setObjectName("colName")
     name.setWordWrap(False)
-    name.setMinimumWidth(150)
-    name.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+    name.setFixedWidth(name_width)
     name.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
     name.setTextInteractionFlags(Qt.TextSelectableByMouse)
     h.addWidget(name, 0, Qt.AlignTop)
@@ -302,7 +312,7 @@ def _change_row(change: dict) -> QWidget:
     return row
 
 
-def timeline_node(node: dict, first: bool, last: bool) -> QWidget:
+def timeline_node(node: dict, first: bool, last: bool, name_width: int = 150) -> QWidget:
     wrap = QWidget()
     outer = QHBoxLayout(wrap)
     outer.setContentsMargins(0, 0, 0, 0)
@@ -354,7 +364,7 @@ def timeline_node(node: dict, first: bool, last: bool) -> QWidget:
         bv.addWidget(nc)
     else:
         for i, ch in enumerate(node["changes"]):
-            r = _change_row(ch)
+            r = _change_row(ch, name_width)
             if i < len(node["changes"]) - 1:
                 r.setStyleSheet("border-bottom: 1px dashed #e9ecf4;")
             bv.addWidget(r)
