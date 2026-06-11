@@ -272,9 +272,11 @@ def _change_row(change: dict) -> QWidget:
 
     name = QLabel(change["label"])
     name.setObjectName("colName")
-    name.setFixedWidth(150)
-    name.setWordWrap(True)
+    name.setWordWrap(False)
+    name.setMinimumWidth(150)
+    name.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
     name.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+    name.setTextInteractionFlags(Qt.TextSelectableByMouse)
     h.addWidget(name, 0, Qt.AlignTop)
 
     diff = QHBoxLayout()
