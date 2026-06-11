@@ -178,12 +178,7 @@ class TablePage(QWidget):
         inp = QHBoxLayout()
         inp.setSpacing(12)
         tw, self.table_name = field("테이블 이름", "member_AUD")
-        self.preview_btn = button("미리보기", "secondary")
-        btn_wrap = QVBoxLayout()
-        btn_wrap.addStretch(1)
-        btn_wrap.addWidget(self.preview_btn)
         inp.addWidget(tw, 1)
-        inp.addLayout(btn_wrap)
         cv.addLayout(inp)
 
         self.chips_caption = QLabel("")
@@ -195,11 +190,16 @@ class TablePage(QWidget):
         chips_scroll.setWidget(self.chips_holder)
         chips_scroll.setFrameShape(QFrame.NoFrame)
         chips_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        chips_scroll.setMaximumHeight(150)
+        chips_area = QFrame()
+        chips_area.setObjectName("chipsArea")
+        chips_area.setFixedHeight(180)
+        ca = QVBoxLayout(chips_area)
+        ca.setContentsMargins(8, 8, 8, 8)
+        ca.addWidget(chips_scroll)
         cv.addSpacing(12)
         cv.addWidget(self.chips_caption)
         cv.addSpacing(6)
-        cv.addWidget(chips_scroll)
+        cv.addWidget(chips_area)
 
         self.preview_container = QWidget()
         self.preview_layout = QVBoxLayout(self.preview_container)
@@ -227,7 +227,6 @@ class TablePage(QWidget):
         root.setContentsMargins(24, 24, 24, 24)
         root.addLayout(_centered(card), 1)
 
-        self.preview_btn.clicked.connect(self._preview)
         self.table_name.returnPressed.connect(self._preview)
         self.table_name.textEdited.connect(self._render_chips)
         self.back_btn.clicked.connect(self.back.emit)
@@ -269,11 +268,12 @@ class TablePage(QWidget):
         if total == 0:
             self.chips_caption.setText("이 스키마에서 _AUD 테이블을 찾지 못했습니다 — 이름을 직접 입력하세요.")
         elif needle:
-            self.chips_caption.setText(f"_AUD 테이블 {total}개 중 {len(matches)}개 표시  ·  클릭해서 선택")
+            self.chips_caption.setText(f"_AUD 테이블 {total}개 중 {len(matches)}개  ·  클릭하면 바로 미리보기")
         else:
-            self.chips_caption.setText(f"_AUD 테이블 {total}개  ·  클릭해서 선택 (테이블 이름을 입력해 필터)")
+            self.chips_caption.setText(f"_AUD 테이블 {total}개  ·  클릭하면 바로 미리보기 (이름 입력해 필터)")
 
     def _pick_chip(self, name: str) -> None:
+        # Clicking a candidate fills the name and previews it immediately.
         self.table_name.setText(name)
         self._preview()
 
@@ -282,17 +282,14 @@ class TablePage(QWidget):
         if not table:
             self.error.emit("테이블 이름을 입력하세요.")
             return
-        self.preview_btn.setEnabled(False)
         self.next_btn.setEnabled(False)
 
         def ok(data):
-            self.preview_btn.setEnabled(True)
             self.preview_data = data
             self._render_preview(data)
             self.next_btn.setEnabled(True)
 
         def err(msg):
-            self.preview_btn.setEnabled(True)
             clear_layout(self.preview_layout)
             self.error.emit(msg)
 
@@ -561,8 +558,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("AudViewer — MariaDB Audit History")
-        self.resize(1240, 900)
-        self.setMinimumSize(1040, 720)
+        self.resize(1240, 960)
+        self.setMinimumSize(1040, 740)
         self.state = AppState()
 
         root = QWidget()

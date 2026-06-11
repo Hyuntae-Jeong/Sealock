@@ -24,7 +24,7 @@ C = {
     "rail": "#d9deea",
 }
 
-MONO = '"Cascadia Mono", "Consolas", "D2Coding", monospace'
+MONO = '"Consolas", "D2Coding", "Cascadia Mono", monospace'
 
 QSS = f"""
 * {{ font-family: "Malgun Gothic", "Segoe UI", "Noto Sans KR", sans-serif; }}
@@ -120,6 +120,7 @@ QLabel#emptyTitle {{ color: {C['text_soft']}; font-size: 14px; }}
 QLabel#emptySub {{ color: {C['text_faint']}; font-size: 12px; }}
 
 /* ── scroll + toast ── */
+QFrame#chipsArea {{ background: {C['surface2']}; border: 1px solid {C['border']}; border-radius: 10px; }}
 QScrollArea {{ border: none; background: transparent; }}
 QScrollArea > QWidget > QWidget {{ background: transparent; }}
 QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
