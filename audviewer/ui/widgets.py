@@ -1,10 +1,11 @@
 """Reusable Qt widgets and helpers: async worker, stepper, timeline pieces."""
 from __future__ import annotations
 
-from PySide6.QtCore import (QEasingCurve, QObject, QPoint, QPropertyAnimation,
-                            QRect, QRectF, QRunnable, QSize, Qt, QThreadPool,
-                            QTimer, Signal)
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
+from PySide6.QtCore import (QEasingCurve, QObject, QPoint, QPointF,
+                            QPropertyAnimation, QRect, QRectF, QRunnable, QSize,
+                            Qt, QThreadPool, QTimer, Signal)
+from PySide6.QtGui import (QColor, QFont, QFontMetrics, QPainter, QPen,
+                           QPolygonF)
 from PySide6.QtWidgets import (QApplication, QFrame, QGraphicsDropShadowEffect,
                                QHBoxLayout, QLabel, QLayout, QLineEdit,
                                QPushButton, QSizePolicy, QVBoxLayout, QWidget)
@@ -227,7 +228,7 @@ class _Rail(QWidget):
     def __init__(self, kind: str, first: bool, last: bool):
         super().__init__()
         self.color = QColor(_KIND_COLOR.get(kind, C["blue"]))
-        self.glyph = _KIND_GLYPH.get(kind, "•")
+        self.kind = kind
         self.first, self.last = first, last
         self.setFixedWidth(36)
         self.setCursor(Qt.PointingHandCursor)
@@ -250,12 +251,34 @@ class _Rail(QWidget):
         p.drawEllipse(QPoint(cx, cy), r + 4, r + 4)
         p.setBrush(self.color)
         p.drawEllipse(QPoint(cx, cy), r, r)
-        p.setPen(QColor("#ffffff"))
-        f = QFont("Segoe UI Symbol")
-        f.setPointSize(10)
-        f.setBold(True)
-        p.setFont(f)
-        p.drawText(QRectF(cx - r, cy - r, 2 * r, 2 * r), Qt.AlignCenter, self.glyph)
+
+        # White glyph drawn as vectors (font-independent — renders identically
+        # everywhere, unlike the ✎/✕ symbol glyphs which can break per machine).
+        white = QColor("#ffffff")
+        if self.kind == "create":
+            p.setPen(QPen(white, 2.0, Qt.SolidLine, Qt.RoundCap))
+            p.drawLine(QPointF(cx - 4, cy), QPointF(cx + 4, cy))
+            p.drawLine(QPointF(cx, cy - 4), QPointF(cx, cy + 4))
+        elif self.kind == "delete":
+            p.setPen(QPen(white, 2.0, Qt.SolidLine, Qt.RoundCap))
+            p.drawLine(QPointF(cx - 3.5, cy - 3.5), QPointF(cx + 3.5, cy + 3.5))
+            p.drawLine(QPointF(cx - 3.5, cy + 3.5), QPointF(cx + 3.5, cy - 3.5))
+        else:  # update -> a pencil: eraser (upper-right) + body + tip (lower-left)
+            p.save()
+            p.translate(cx, cy)
+            p.rotate(45)
+            p.setPen(Qt.NoPen)
+            p.setBrush(white)
+            p.drawRoundedRect(QRectF(-1.7, -5.0, 3.4, 1.9), 0.7, 0.7)        # eraser cap
+            p.drawRect(QRectF(-1.5, -3.2, 3.0, 6.2))                          # wooden body
+            p.drawPolygon(QPolygonF([QPointF(-1.5, 3.0), QPointF(1.5, 3.0),
+                                     QPointF(0.0, 5.3)]))                     # sharpened cone
+            p.setBrush(self.color)
+            p.drawPolygon(QPolygonF([QPointF(-0.7, 4.3), QPointF(0.7, 4.3),
+                                     QPointF(0.0, 5.3)]))                     # exposed lead
+            p.setPen(QPen(self.color, 0.9))
+            p.drawLine(QPointF(-1.7, -3.2), QPointF(1.7, -3.2))              # ferrule line
+            p.restore()
 
 
 # ── click-to-copy ───────────────────────────────────────────────────────
