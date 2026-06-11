@@ -1,0 +1,41 @@
+# ── AudViewer is a PUBLIC repo. Keep all secrets / PII out of git. ──
+
+# Local connection settings & any file that may hold real credentials/PII
+config.local.json
+*.local.json
+.env
+.env.*
+*.secret
+secrets/
+
+# Exported reports / dumps (may contain real data)
+exports/
+*.dump
+*.sql.bak
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# PyInstaller / build artifacts
+build/
+dist/
+*.spec
+*.manifest
+.deps_installed
+
+# OS / editor
+Thumbs.db
+desktop.ini
+.DS_Store
+.idea/
+.vscode/

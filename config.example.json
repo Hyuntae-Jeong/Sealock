@@ -1,0 +1,8 @@
+{
+  "_comment": "Copy this file to 'config.local.json' (git-ignored) to pre-fill the login form during development. Never put real credentials in this example file.",
+  "host": "localhost",
+  "port": 3306,
+  "user": "YOUR_DB_USER",
+  "password": "YOUR_DB_PASSWORD",
+  "database": "YOUR_SCHEMA"
+}
