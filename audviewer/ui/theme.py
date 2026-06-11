@@ -109,6 +109,8 @@ QLabel#typeCreate {{ background: #e7f7ec; color: {C['green_text']}; border-radiu
 QLabel#typeUpdate {{ background: #e8f0fe; color: #1d4ed8; border-radius: 9px; padding: 3px 11px; font-size: 11px; font-weight: 700; }}
 QLabel#typeDelete {{ background: #fdecec; color: #b91c1c; border-radius: 9px; padding: 3px 11px; font-size: 11px; font-weight: 700; }}
 QLabel#tlTime {{ color: {C['text_faint']}; font-size: 12px; font-family: {MONO}; }}
+QLabel#tlChevron {{ color: {C['text_faint']}; font-size: 13px; padding: 0 2px; }}
+QLabel#tlChevron:hover {{ color: {C['primary']}; }}
 QLabel#colName {{ color: {C['text']}; font-weight: 600; font-size: 13px; font-family: {MONO}; }}
 QLabel#valOld {{ background: #fdecec; color: #b42318; border: 1px solid #f4c9c9; border-radius: 7px; padding: 3px 9px; font-size: 12px; font-family: {MONO}; }}
 QLabel#valNew {{ background: #e7f7ec; color: {C['green_text']}; border: 1px solid #bfe9cd; border-radius: 7px; padding: 3px 9px; font-size: 12px; font-family: {MONO}; }}

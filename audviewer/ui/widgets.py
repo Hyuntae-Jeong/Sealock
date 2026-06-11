@@ -219,7 +219,10 @@ _KIND_KO = {"create": "생성", "update": "수정", "delete": "삭제"}
 
 
 class _Rail(QWidget):
-    """The vertical timeline line with a coloured dot for one revision node."""
+    """The vertical timeline line with a coloured dot for one revision node.
+    Clicking the dot toggles its card's collapsed state."""
+
+    clicked = Signal()
 
     def __init__(self, kind: str, first: bool, last: bool):
         super().__init__()
@@ -227,6 +230,12 @@ class _Rail(QWidget):
         self.glyph = _KIND_GLYPH.get(kind, "•")
         self.first, self.last = first, last
         self.setFixedWidth(36)
+        self.setCursor(Qt.PointingHandCursor)
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(e)
 
     def paintEvent(self, _):
         p = QPainter(self)
@@ -384,6 +393,7 @@ class TimelineCard(QFrame):
         self.setObjectName("tlCard")
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         self.setFocusPolicy(Qt.StrongFocus)
+        self._collapsed = False
         cv = QVBoxLayout(self)
         cv.setContentsMargins(0, 0, 0, 0)
         cv.setSpacing(0)
@@ -403,6 +413,11 @@ class TimelineCard(QFrame):
         hh.addWidget(tchip)
         hh.addStretch(1)
         hh.addWidget(time)
+        self._chevron = QLabel("▾")
+        self._chevron.setObjectName("tlChevron")
+        self._chevron.setCursor(Qt.PointingHandCursor)
+        self._chevron.mousePressEvent = self._chevron_clicked
+        hh.addWidget(self._chevron)
         cv.addWidget(head)
 
         body = QWidget()
@@ -423,6 +438,7 @@ class TimelineCard(QFrame):
                 if i < len(node["changes"]) - 1:
                     r.setStyleSheet("border-bottom: 1px dashed #e9ecf4;")
                 bv.addWidget(r)
+        self._body = body
         cv.addWidget(body)
 
     def set_selected(self, on: bool) -> None:
@@ -440,8 +456,32 @@ class TimelineCard(QFrame):
         elif e.key() == Qt.Key_Down:
             self.navigate.emit(1)
             e.accept()
+        elif e.key() == Qt.Key_Left:        # collapse (header only)
+            self.set_collapsed(True)
+            e.accept()
+        elif e.key() == Qt.Key_Right:       # expand
+            self.set_collapsed(False)
+            e.accept()
         else:
             super().keyPressEvent(e)
+
+    def set_collapsed(self, on: bool) -> None:
+        self._collapsed = bool(on)
+        self._body.setVisible(not self._collapsed)
+        self._chevron.setText("▸" if self._collapsed else "▾")
+
+    def toggle_collapsed(self) -> None:
+        self.set_collapsed(not self._collapsed)
+
+    def _on_rail_clicked(self) -> None:
+        self.activated.emit(self)
+        self.toggle_collapsed()
+
+    def _chevron_clicked(self, e) -> None:
+        if e.button() == Qt.LeftButton:
+            self.activated.emit(self)
+            self.toggle_collapsed()
+        e.accept()
 
 
 def timeline_node(node: dict, first: bool, last: bool, name_width: int = 150):
@@ -450,7 +490,8 @@ def timeline_node(node: dict, first: bool, last: bool, name_width: int = 150):
     outer = QHBoxLayout(wrap)
     outer.setContentsMargins(0, 0, 0, 0)
     outer.setSpacing(0)
-    outer.addWidget(_Rail(node["kind"], first, last))
+    rail = _Rail(node["kind"], first, last)
+    outer.addWidget(rail)
 
     # The card sits at the top; a fixed gap below keeps cards apart while the
     # rail (which fills the full node height) draws a continuous line through it.
@@ -459,6 +500,7 @@ def timeline_node(node: dict, first: bool, last: bool, name_width: int = 150):
     rv.setContentsMargins(0, 0, 0, 0)
     rv.setSpacing(0)
     card = TimelineCard(node, name_width)
+    rail.clicked.connect(card._on_rail_clicked)
     rv.addWidget(card)
     if not last:
         rv.addSpacing(18)
