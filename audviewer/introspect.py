@@ -188,8 +188,13 @@ def classify(columns: list[dict], pk_columns: list[str]) -> dict:
     for c in mod_flags:
         base = c["name"][:-4]  # strip the trailing _MOD / _mod
         bl = base.lower()
-        if bl and bl not in data_lower and bl not in ident_lower and bl not in _SYSTEM_NAMES:
-            orphan_mod_flags.append({"name": c["name"], "label": base})
+        if not bl or bl in data_lower or bl in ident_lower or bl in _SYSTEM_NAMES:
+            continue
+        # A @ManyToOne association keeps its FK in <base>_id, which already shows
+        # the A->B change, so its _MOD flag is redundant — not a true orphan.
+        if f"{bl}_id" in data_lower:
+            continue
+        orphan_mod_flags.append({"name": c["name"], "label": base})
 
     identifier_default = identifier_columns[0] if identifier_columns else None
     return {

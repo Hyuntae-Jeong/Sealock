@@ -157,6 +157,25 @@ def test_classify_detects_orphan_mod_flag():
     assert cls["orphan_mod_flags"] == [{"name": "checkpoints_mod", "label": "checkpoints"}]
 
 
+def test_association_mod_flag_with_fk_column_is_not_orphan():
+    from audviewer.introspect import classify  # noqa: PLC0415
+    cols = [
+        {"name": "id", "type": "bigint", "nullable": False, "key": "PRI", "comment": ""},
+        {"name": "parent_interface_id", "type": "bigint", "nullable": True, "key": "", "comment": ""},
+        {"name": "parent_interface_mod", "type": "bit", "nullable": True, "key": "", "comment": ""},
+        {"name": "checkpoints_mod", "type": "bit", "nullable": True, "key": "", "comment": ""},
+        {"name": "REV", "type": "int", "nullable": False, "key": "PRI", "comment": ""},
+        {"name": "REVTYPE", "type": "tinyint", "nullable": True, "key": "", "comment": ""},
+    ]
+    cls = classify(cols, ["id", "REV"])
+    # The FK column parent_interface_id is a real data column (shows A->B),
+    # so parent_interface_mod is NOT shown as "변경됨".
+    assert "parent_interface_id" in [c["name"] for c in cls["data_columns"]]
+    orphan_labels = [o["label"] for o in cls["orphan_mod_flags"]]
+    assert "parent_interface" not in orphan_labels
+    assert orphan_labels == ["checkpoints"]  # only the true orphan remains
+
+
 def test_summary():
     tl = build_timeline(ROWS, CLASSIFICATION)
     s = summarize(tl, "id", "42")
