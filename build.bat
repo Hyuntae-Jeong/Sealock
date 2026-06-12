@@ -22,5 +22,5 @@ if errorlevel 1 (
 )
 
 echo.
-echo [build] Done -> dist\AudViewer.exe
+echo [build] Done -^> dist\AudViewer.exe
 pause
