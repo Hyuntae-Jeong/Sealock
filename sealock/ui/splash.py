@@ -21,7 +21,9 @@ from PySide6.QtWidgets import (
 from sealock.resources import asset_path
 from sealock.ui.theme import C
 
-_QSS = f"""
+def _splash_qss() -> str:
+    """Built per call so the splash honours the active palette (light/dark)."""
+    return f"""
 QFrame#splashCard {{ background: {C['surface']}; border: 1px solid {C['border']}; border-radius: 20px; }}
 QLabel#splashTitle {{ font-size: 27px; font-weight: 800; color: {C['text']}; letter-spacing: 0.5px; }}
 QLabel#splashSub {{ font-size: 12px; color: {C['text_faint']}; letter-spacing: 0.3px; }}
@@ -83,7 +85,7 @@ class SplashScreen(QWidget):
             Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool,
         )
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setStyleSheet(_QSS)
+        self.setStyleSheet(_splash_qss())
         self._on_done: Callable[[], None] | None = None
 
         card = QFrame(self)

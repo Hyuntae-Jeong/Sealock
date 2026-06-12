@@ -1,19 +1,23 @@
 """Main window and the three wizard pages (connection / table / history)."""
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QPoint, Qt, QTimer, Signal
+from PySide6.QtCore import (QEasingCurve, QEvent, QPoint, QPropertyAnimation,
+                            Qt, QTimer, Signal)
 from PySide6.QtGui import QCursor, QPixmap
-from PySide6.QtWidgets import (QApplication, QComboBox, QFrame, QGridLayout,
+from PySide6.QtWidgets import (QApplication, QComboBox, QFrame,
+                               QGraphicsOpacityEffect, QGridLayout,
                                QHBoxLayout, QLabel, QLineEdit, QMainWindow,
                                QPushButton, QScrollArea, QSizePolicy,
                                QStackedWidget, QVBoxLayout, QWidget)
 
-from .. import services
+from .. import services, settings
 from ..resources import app_icon, asset_path
 from ..services import AppState
-from .widgets import (FlowLayout, Stepper, TimelineCard, button, clear_layout,
-                      field, meta_badge, name_column_width, repolish, run_async,
-                      soft_shadow, summary_bar, timeline_node)
+from . import theme
+from .widgets import (FlowLayout, Stepper, ThemeToggle, TimelineCard, button,
+                      clear_layout, field, meta_badge, name_column_width,
+                      repolish, run_async, soft_shadow, summary_bar,
+                      timeline_node)
 
 
 def _title(text: str) -> QLabel:
@@ -652,7 +656,8 @@ class MainWindow(QMainWindow):
         rv.setContentsMargins(0, 0, 0, 0)
         rv.setSpacing(0)
 
-        rv.addWidget(self._build_topbar())
+        self._topbar = self._build_topbar()
+        rv.addWidget(self._topbar)
 
         self.stack = QStackedWidget()
         self.page_conn = ConnectionPage(self.state)
@@ -711,7 +716,60 @@ class MainWindow(QMainWindow):
         tb.addLayout(brand)
         tb.addStretch(1)
         tb.addWidget(self.stepper)
+        tb.addSpacing(18)
+        self._theme_btn = ThemeToggle()
+        self._theme_btn.set_dark(theme.is_dark())
+        self._theme_btn.clicked.connect(self._toggle_theme)
+        tb.addWidget(self._theme_btn)
         return topbar
+
+    def _toggle_theme(self) -> None:
+        """Cross-fade between light and dark: snapshot the current look, swap the
+        palette underneath, then dissolve the snapshot away while the toggle
+        button animates a sunrise / sunset above it."""
+        name = "light" if theme.is_dark() else "dark"
+
+        # 1. snapshots of the old look, captured before the swap. The toggle's
+        # background is transparent, so its area cross-fades together with the
+        # bar underneath it — no seam, and nothing flashes on hover changes.
+        bar_shot = QLabel(self._topbar)
+        bar_shot.setPixmap(self._topbar.grab())
+        bar_shot.setGeometry(self._topbar.rect())
+        bar_shot.show()
+        bar_shot.raise_()
+        self._theme_btn.raise_()  # keep the animating button above its snapshot
+
+        body_shot = QLabel(self.centralWidget())
+        body_shot.setPixmap(self.stack.grab())
+        body_shot.setGeometry(self.stack.geometry())
+        body_shot.show()
+        body_shot.raise_()
+
+        # 2. apply the new palette beneath the snapshots
+        theme.set_palette(name)
+        app = QApplication.instance()
+        if app is not None:
+            app.setStyleSheet(theme.qss())
+            for w in app.allWidgets():
+                w.update()
+        settings.save_theme(name)
+
+        # 3. animate the button + dissolve the snapshots to reveal the new theme
+        self._theme_btn.set_dark(theme.is_dark(), animate=True)
+        self._dissolve(bar_shot)
+        self._dissolve(body_shot)
+
+    def _dissolve(self, w: QWidget, ms: int = 900) -> None:
+        """Fade ``w`` (a snapshot overlay) to transparent, then delete it."""
+        eff = QGraphicsOpacityEffect(w)
+        w.setGraphicsEffect(eff)
+        anim = QPropertyAnimation(eff, b"opacity", w)
+        anim.setDuration(ms)
+        anim.setStartValue(1.0)
+        anim.setEndValue(0.0)
+        anim.setEasingCurve(QEasingCurve.InOutCubic)
+        anim.finished.connect(w.deleteLater)
+        anim.start()
 
     def goto(self, idx: int) -> None:
         self.stack.setCurrentIndex(idx)

@@ -9,9 +9,10 @@ import sys
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication
 
+from sealock import settings
 from sealock.resources import app_icon
+from sealock.ui import theme
 from sealock.ui.splash import SplashScreen
-from sealock.ui.theme import QSS
 from sealock.ui.window import MainWindow
 
 
@@ -36,7 +37,8 @@ def main() -> None:
     app.setWindowIcon(app_icon())
     app.setStyle("Fusion")
     app.setFont(QFont("Malgun Gothic", 10))
-    app.setStyleSheet(QSS)
+    theme.set_palette(settings.load_theme())
+    app.setStyleSheet(theme.qss())
 
     window = MainWindow()  # built behind the splash; shown when it fades out
 

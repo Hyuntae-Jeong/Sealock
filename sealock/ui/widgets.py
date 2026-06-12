@@ -1,11 +1,14 @@
 """Reusable Qt widgets and helpers: async worker, stepper, timeline pieces."""
 from __future__ import annotations
 
-from PySide6.QtCore import (QEasingCurve, QObject, QPoint, QPointF,
+import math
+
+from PySide6.QtCore import (Property, QEasingCurve, QObject, QPoint, QPointF,
                             QPropertyAnimation, QRect, QRectF, QRunnable, QSize,
                             Qt, QThreadPool, QTimer, Signal)
-from PySide6.QtGui import (QColor, QFont, QFontMetrics, QPainter, QPen,
-                           QPolygonF)
+from PySide6.QtGui import (QColor, QFont, QFontMetrics, QLinearGradient,
+                           QPainter, QPainterPath, QPen, QPolygonF,
+                           QRadialGradient)
 from PySide6.QtWidgets import (QApplication, QFrame, QGraphicsDropShadowEffect,
                                QHBoxLayout, QLabel, QLayout, QLineEdit,
                                QPushButton, QSizePolicy, QVBoxLayout, QWidget)
@@ -240,8 +243,115 @@ class Stepper(QWidget):
             set_state(line, "done" if n > i else "todo")
 
 
+# ── theme toggle ────────────────────────────────────────────────────────
+class ThemeToggle(QPushButton):
+    """A wide button that animates a sunrise / sunset along a large orbit.
+
+    The sun and moon ride one big circle whose centre sits well *below* the
+    button, so only the arc's apex shows in the rectangular sky. Each toggle
+    advances the orbit half a turn in the *same* direction (clockwise): the sun
+    slides down to the right while the moon climbs in from the left, and on the
+    way back the moon sets to the right while the sun rises from the left — it
+    never rewinds. ``angle`` (radians) is what the host animates; even multiples
+    of π are light (sun at apex), odd multiples are dark (moon at apex).
+    """
+
+    # Orbit geometry, in the button's 68x34 coordinate space.
+    _CY, _R, _RAD = 54.9, 39.9, 7.0
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setObjectName("themeToggle")
+        self.setFixedSize(68, 34)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setToolTip("테마 전환 (라이트 / 다크)")
+        self._base = 0.0  # orbit angle (radians), accumulated one way
+        self._hover = False
+        self._anim = QPropertyAnimation(self, b"angle", self)
+        self._anim.setDuration(1400)
+        self._anim.setEasingCurve(QEasingCurve.InOutCubic)
+
+    def set_dark(self, dark: bool, animate: bool = False) -> None:
+        want_odd = 1 if dark else 0
+        self._anim.stop()
+        if not animate:
+            self._base = math.pi if dark else 0.0
+            self.update()
+            return
+        # advance another half-turn (same direction) only when the parity flips
+        if round(self._base / math.pi) % 2 != want_odd:
+            self._anim.setStartValue(self._base)
+            self._anim.setEndValue(self._base + math.pi)
+            self._anim.start()
+
+    def _get_angle(self) -> float:
+        return self._base
+
+    def _set_angle(self, v: float) -> None:
+        self._base = v
+        self.update()
+
+    angle = Property(float, _get_angle, _set_angle)
+
+    def enterEvent(self, e) -> None:
+        self._hover = True
+        self.update()
+        super().enterEvent(e)
+
+    def leaveEvent(self, e) -> None:
+        self._hover = False
+        self.update()
+        super().leaveEvent(e)
+
+    def paintEvent(self, e) -> None:
+        super().paintEvent(e)  # transparent background from the QSS
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        w, h = self.width(), self.height()
+        cx = w / 2.0
+
+        # Clip to the rounded rectangle; its bottom edge acts as the horizon, so
+        # a body that swings past it simply sinks out of sight.
+        face = QPainterPath()
+        face.addRoundedRect(QRectF(0, 0, w, h), 8, 8)
+        p.setClipPath(face)
+
+        rad = self._RAD * (1.12 if self._hover else 1.0)  # subtle hover feedback
+        b = self._base
+        self._sun(p, cx + self._R * math.sin(b), self._CY - self._R * math.cos(b), rad)
+        self._moon(p, cx + self._R * math.sin(b + math.pi),
+                   self._CY - self._R * math.cos(b + math.pi), rad)
+
+    @staticmethod
+    def _sun(p: QPainter, x: float, y: float, r: float) -> None:
+        p.setPen(QPen(QColor("#FFB23E"), 1.7, Qt.SolidLine, Qt.RoundCap))
+        for i in range(8):
+            a = i * math.pi / 4
+            p.drawLine(QPointF(x + math.cos(a) * (r + 2.4), y + math.sin(a) * (r + 2.4)),
+                       QPointF(x + math.cos(a) * (r + 4.7), y + math.sin(a) * (r + 4.7)))
+        g = QRadialGradient(x - 1.6, y - 1.6, r * 1.7)
+        g.setColorAt(0.0, QColor("#FFE680"))
+        g.setColorAt(1.0, QColor("#FF9F1C"))
+        p.setPen(Qt.NoPen)
+        p.setBrush(g)
+        p.drawEllipse(QPointF(x, y), r, r)
+
+    @staticmethod
+    def _moon(p: QPainter, x: float, y: float, r: float) -> None:
+        disc = QPainterPath()
+        disc.addEllipse(QPointF(x, y), r, r)
+        cut = QPainterPath()
+        cut.addEllipse(QPointF(x + 3.4, y - 2.6), r, r)
+        g = QLinearGradient(x - r, y - r, x + r, y + r)
+        g.setColorAt(0.0, QColor("#FFF3B0"))
+        g.setColorAt(1.0, QColor("#F6C544"))
+        p.setPen(Qt.NoPen)
+        p.setBrush(g)
+        p.drawPath(disc.subtracted(cut))
+
+
 # ── timeline pieces ─────────────────────────────────────────────────────
-_KIND_COLOR = {"create": C["green"], "update": C["blue"], "delete": C["red"]}
+_KIND_KEY = {"create": "green", "update": "blue", "delete": "red"}
 _KIND_GLYPH = {"create": "+", "update": "✎", "delete": "✕"}
 _KIND_KO = {"create": "생성", "update": "수정", "delete": "삭제"}
 
@@ -254,7 +364,6 @@ class _Rail(QWidget):
 
     def __init__(self, kind: str, first: bool, last: bool):
         super().__init__()
-        self.color = QColor(_KIND_COLOR.get(kind, C["blue"]))
         self.kind = kind
         self.first, self.last = first, last
         self.setFixedWidth(36)
@@ -268,6 +377,7 @@ class _Rail(QWidget):
     def paintEvent(self, _):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
+        color = QColor(C[_KIND_KEY.get(self.kind, "blue")])  # live per-theme
         cx, cy, r = 14, 20, 11
         top = cy if self.first else 0
         bot = cy if self.last else self.height()
@@ -276,7 +386,7 @@ class _Rail(QWidget):
         p.setPen(Qt.NoPen)
         p.setBrush(QColor(C["bg"]))
         p.drawEllipse(QPoint(cx, cy), r + 4, r + 4)
-        p.setBrush(self.color)
+        p.setBrush(color)
         p.drawEllipse(QPoint(cx, cy), r, r)
 
         # White glyph drawn as vectors (font-independent — renders identically
@@ -300,10 +410,10 @@ class _Rail(QWidget):
             p.drawRect(QRectF(-1.5, -3.2, 3.0, 6.2))                          # wooden body
             p.drawPolygon(QPolygonF([QPointF(-1.5, 3.0), QPointF(1.5, 3.0),
                                      QPointF(0.0, 5.3)]))                     # sharpened cone
-            p.setBrush(self.color)
+            p.setBrush(color)
             p.drawPolygon(QPolygonF([QPointF(-0.7, 4.3), QPointF(0.7, 4.3),
                                      QPointF(0.0, 5.3)]))                     # exposed lead
-            p.setPen(QPen(self.color, 0.9))
+            p.setPen(QPen(color, 0.9))
             p.drawLine(QPointF(-1.7, -3.2), QPointF(1.7, -3.2))              # ferrule line
             p.restore()
 
