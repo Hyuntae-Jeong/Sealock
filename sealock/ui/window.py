@@ -135,6 +135,11 @@ class ConnectionPage(QWidget):
         if not p["database"]:
             self.error.emit("데이터베이스(스키마) 이름을 입력하세요.")
             return
+        # "연결 테스트"는 실제 연결을 확정하는 동작이다. 데모는 "샘플 데이터로
+        # 둘러보기" 전용 버튼으로만 켜지므로, 그 경로로 둘러보다 이 페이지로
+        # 되돌아왔을 때 남아 있던 demo=True를 해제해 세션 상태를 실제 연결과
+        # 일치시킨다. (스텝퍼·뒤로 버튼 어느 경로로 돌아와도 안전하게.)
+        self.state.demo = False
         self._set_status("busy", "연결 테스트 중…")
         self.test_btn.setEnabled(False)
 

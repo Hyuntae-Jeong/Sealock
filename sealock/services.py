@@ -45,9 +45,11 @@ def form_defaults() -> dict:
 
 
 def test_and_connect(state: AppState, p: dict) -> str:
-    """Open the persistent connection and return the server version string."""
-    if state.demo:
-        return "11.4.2-MariaDB (demo)"
+    """Open the persistent connection and return the server version string.
+
+    Always performs a real connection — demo mode is reached only through the
+    dedicated "샘플 데이터로 둘러보기" button, which bypasses this path entirely.
+    """
     state.db.connect(p.get("host"), p.get("port"), p.get("user"), p.get("password"), p.get("database"))
     row = state.db.query_one("SELECT VERSION() AS v")
     return str((row or {}).get("v", "unknown"))
