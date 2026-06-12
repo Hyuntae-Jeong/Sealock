@@ -668,6 +668,7 @@ class MainWindow(QMainWindow):
         self.page_table.error.connect(lambda m: self.toast(m, True))
         self.page_hist.back.connect(lambda: self.goto(1))
         self.page_hist.error.connect(lambda m: self.toast(m, True))
+        self.stepper.step_clicked.connect(self._on_step_clicked)
 
     def _build_topbar(self) -> QFrame:
         topbar = QFrame()
@@ -710,6 +711,12 @@ class MainWindow(QMainWindow):
     def goto(self, idx: int) -> None:
         self.stack.setCurrentIndex(idx)
         self.stepper.set_current(idx + 1)
+
+    def _on_step_clicked(self, idx: int) -> None:
+        # 이미 거쳐온(완료된) 단계로만 되돌아갈 수 있다. 앞 단계 건너뛰기는
+        # on_enter()가 준비하는 선행 상태(연결·테이블 선택)가 없어 막는다.
+        if idx < self.stack.currentIndex():
+            self.goto(idx)
 
     def _from_conn(self, demo: bool) -> None:
         self.state.demo = bool(demo)

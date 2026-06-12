@@ -176,11 +176,40 @@ class FlowLayout(QLayout):
 
 
 # ── stepper ─────────────────────────────────────────────────────────────
+class _Step(QWidget):
+    """One clickable step: a number circle plus its text label."""
+
+    clicked = Signal(int)  # 0-based index of this step
+
+    def __init__(self, index: int, text: str):
+        super().__init__()
+        self._index = index
+        h = QHBoxLayout(self)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(8)
+        self.num = QLabel(str(index + 1))
+        self.num.setObjectName("stepNum")
+        self.num.setAlignment(Qt.AlignCenter)
+        self.lab = QLabel(text)
+        self.lab.setObjectName("stepLabel")
+        # 라벨 위 클릭도 통째로 _Step이 받도록 마우스 이벤트를 통과시킨다
+        self.num.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.lab.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        h.addWidget(self.num)
+        h.addWidget(self.lab)
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.LeftButton:
+            self.clicked.emit(self._index)
+        super().mousePressEvent(e)
+
+
 class Stepper(QWidget):
+    step_clicked = Signal(int)  # 0-based index the user clicked
+
     def __init__(self, labels: list[str]):
         super().__init__()
-        self._nums: list[QLabel] = []
-        self._labs: list[QLabel] = []
+        self._steps: list[_Step] = []
         self._lines: list[QFrame] = []
         h = QHBoxLayout(self)
         h.setContentsMargins(0, 0, 0, 0)
@@ -192,23 +221,21 @@ class Stepper(QWidget):
                 line.setFixedWidth(30)
                 self._lines.append(line)
                 h.addWidget(line)
-            num = QLabel(str(i + 1))
-            num.setObjectName("stepNum")
-            num.setAlignment(Qt.AlignCenter)
-            lab = QLabel(text)
-            lab.setObjectName("stepLabel")
-            self._nums.append(num)
-            self._labs.append(lab)
-            h.addWidget(num)
-            h.addWidget(lab)
+            step = _Step(i, text)
+            step.clicked.connect(self.step_clicked)
+            self._steps.append(step)
+            h.addWidget(step)
         self.set_current(1)
 
     def set_current(self, n: int) -> None:
-        for i, (num, lab) in enumerate(zip(self._nums, self._labs), start=1):
+        for i, step in enumerate(self._steps, start=1):
             state = "done" if i < n else "active" if i == n else "todo"
-            num.setText("✓" if state == "done" else str(i))
-            set_state(num, state)
-            set_state(lab, state)
+            step.num.setText("✓" if state == "done" else str(i))
+            set_state(step.num, state)
+            set_state(step.lab, state)
+            # 완료된 단계만 클릭해 되돌아갈 수 있음 → 그 단계에만 손가락 커서
+            step.setCursor(Qt.PointingHandCursor if state == "done"
+                           else Qt.ArrowCursor)
         for i, line in enumerate(self._lines, start=1):
             set_state(line, "done" if n > i else "todo")
 
