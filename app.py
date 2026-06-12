@@ -10,6 +10,7 @@ from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication
 
 from sealock.resources import app_icon
+from sealock.ui.splash import SplashScreen
 from sealock.ui.theme import QSS
 from sealock.ui.window import MainWindow
 
@@ -37,8 +38,11 @@ def main() -> None:
     app.setFont(QFont("Malgun Gothic", 10))
     app.setStyleSheet(QSS)
 
-    window = MainWindow()
-    window.show()
+    window = MainWindow()  # built behind the splash; shown when it fades out
+
+    splash = SplashScreen()
+    splash.start(on_done=window.show)
+
     sys.exit(app.exec())
 
 
