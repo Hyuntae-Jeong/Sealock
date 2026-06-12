@@ -7,7 +7,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from audviewer.history import build_timeline, summarize  # noqa: E402
+from sealock.history import build_timeline, summarize  # noqa: E402
 
 # Classification mirroring what introspect.classify() would produce for a
 # `member_AUD` table with modified-flags enabled.
@@ -143,7 +143,7 @@ def test_orphan_mod_flag_shows_changed_without_diff():
 
 
 def test_classify_detects_orphan_mod_flag():
-    from audviewer.introspect import classify  # noqa: PLC0415
+    from sealock.introspect import classify  # noqa: PLC0415
     cols = [
         {"name": "id", "type": "bigint", "nullable": False, "key": "PRI", "comment": ""},
         {"name": "name", "type": "varchar", "nullable": True, "key": "", "comment": ""},
@@ -158,7 +158,7 @@ def test_classify_detects_orphan_mod_flag():
 
 
 def test_association_mod_flag_with_fk_column_is_not_orphan():
-    from audviewer.introspect import classify  # noqa: PLC0415
+    from sealock.introspect import classify  # noqa: PLC0415
     cols = [
         {"name": "id", "type": "bigint", "nullable": False, "key": "PRI", "comment": ""},
         {"name": "parent_interface_id", "type": "bigint", "nullable": True, "key": "", "comment": ""},

@@ -1,4 +1,4 @@
-"""Color palette and the global Qt style sheet (QSS) for AudViewer.
+"""Color palette and the global Qt style sheet (QSS) for Sealock.
 
 A single light theme: soft surfaces, an indigo accent, rounded cards. Variants
 are selected via objectName (e.g. #primary) or the dynamic ``state`` property

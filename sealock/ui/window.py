@@ -634,7 +634,7 @@ class HistoryPage(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("AudViewer — MariaDB Audit History")
+        self.setWindowTitle("Sealock — MariaDB Audit History")
         self.setWindowIcon(app_icon())
         self.resize(1240, 960)
         self.setMinimumSize(1040, 740)
@@ -686,7 +686,7 @@ class MainWindow(QMainWindow):
         mark.setAlignment(Qt.AlignCenter)
         brand_text = QVBoxLayout()
         brand_text.setSpacing(0)
-        bt = QLabel("AudViewer")
+        bt = QLabel("Sealock")
         bt.setObjectName("brandTitle")
         bs = QLabel("MariaDB Envers 변경 이력 뷰어")
         bs.setObjectName("brandSub")

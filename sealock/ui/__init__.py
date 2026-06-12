@@ -1,4 +1,4 @@
-"""Qt (PySide6) user interface for AudViewer."""
+"""Qt (PySide6) user interface for Sealock."""
 
 from .window import MainWindow
 

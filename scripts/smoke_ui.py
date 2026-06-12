@@ -13,9 +13,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from audviewer import demo, services  # noqa: E402
-from audviewer.ui.theme import QSS  # noqa: E402
-from audviewer.ui.window import MainWindow  # noqa: E402
+from sealock import demo, services  # noqa: E402
+from sealock.ui.theme import QSS  # noqa: E402
+from sealock.ui.window import MainWindow  # noqa: E402
 
 
 def main() -> int:

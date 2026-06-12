@@ -2,7 +2,7 @@
 
 PyInstaller unpacks bundled data under ``sys._MEIPASS``; a normal ``python``
 run falls back to the package directory. Keep every runtime image asset in
-``audviewer/assets/`` so both lookups line up.
+``sealock/assets/`` so both lookups line up.
 """
 from __future__ import annotations
 
@@ -13,9 +13,9 @@ from PySide6.QtGui import QIcon
 
 
 def asset_path(name: str) -> str:
-    """Absolute path to ``audviewer/assets/<name>`` (dev or PyInstaller bundle)."""
+    """Absolute path to ``sealock/assets/<name>`` (dev or PyInstaller bundle)."""
     if getattr(sys, "frozen", False):
-        base = os.path.join(sys._MEIPASS, "audviewer", "assets")
+        base = os.path.join(sys._MEIPASS, "sealock", "assets")
     else:
         base = os.path.join(os.path.dirname(__file__), "assets")
     return os.path.join(base, name)

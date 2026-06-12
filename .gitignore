@@ -1,4 +1,4 @@
-# ── AudViewer is a PUBLIC repo. Keep all secrets / PII out of git. ──
+# ── Sealock is a PUBLIC repo. Keep all secrets / PII out of git. ──
 
 # Local connection settings & any file that may hold real credentials/PII
 config.local.json

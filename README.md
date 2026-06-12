@@ -1,8 +1,8 @@
-# AudViewer
+# Sealock
 
 > MariaDB **Hibernate Envers** (`*_AUD`) 변경 이력을 사람이 보기 좋게 보여주는 데스크톱 도구
 
-Envers 감사 테이블은 변경된 컬럼을 `<컬럼>_MOD = 1` 플래그로만 표시하고, 저장하는 값은 *변경 후* 값뿐이라 "무엇이 무엇으로 바뀌었는지" 한눈에 보기 어렵습니다. AudViewer는 리비전을 시간순으로 따라가며 **이전 값 → 이후 값** diff를 깔끔한 타임라인으로 보여줍니다.
+Envers 감사 테이블은 변경된 컬럼을 `<컬럼>_MOD = 1` 플래그로만 표시하고, 저장하는 값은 *변경 후* 값뿐이라 "무엇이 무엇으로 바뀌었는지" 한눈에 보기 어렵습니다. Sealock는 리비전을 시간순으로 따라가며 **이전 값 → 이후 값** diff를 깔끔한 타임라인으로 보여줍니다.
 
 ## 동작 방식 (3단계)
 
@@ -28,7 +28,7 @@ Windows · Python 3.9+ 필요.
 ```bat
 build.bat
 ```
-PyInstaller로 `dist\AudViewer.exe` (단일 실행 파일)를 생성합니다. 아이콘은 `icons\icon_win.ico` 가 적용됩니다.
+PyInstaller로 `dist\Sealock.exe` (단일 실행 파일)를 생성합니다. 아이콘은 `icons\icon_win.ico` 가 적용됩니다.
 
 ## 릴리즈 (자동 배포)
 
@@ -39,7 +39,7 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
-- **첨부물:** `AudViewer-Windows.zip`(단일 `.exe`) · `AudViewer-macOS.zip`(`.app` 번들)
+- **첨부물:** `Sealock-Windows.zip`(단일 `.exe`) · `Sealock-macOS.zip`(`.app` 번들)
 - **아이콘:** Windows `icons/icon_win.ico`, macOS `icons/icon_mac.icns`
 - macOS 빌드는 **Apple Silicon(arm64)** 용입니다. Intel Mac 용도 필요하면 `runs-on: macos-13` 잡을 추가하세요.
 - macOS 앱은 코드 서명이 안 돼 있어 첫 실행 시 **우클릭 → 열기** 가 필요할 수 있습니다(릴리즈 설명에 안내 포함).
@@ -68,7 +68,7 @@ git push origin v1.0.0
 
 ```
 app.py                 진입점 — QApplication 생성, 테마 적용
-audviewer/
+sealock/
   db.py                PyMySQL 연결/쿼리 (자격증명은 메모리에만 존재)
   introspect.py        스키마 분석 + Envers 컬럼 분류, REVINFO 탐지
   history.py           감사 행 → 시간순 변경 타임라인 빌더

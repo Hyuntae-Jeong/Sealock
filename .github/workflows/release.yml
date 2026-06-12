@@ -28,21 +28,21 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
 
-      - name: Build AudViewer.exe
+      - name: Build Sealock.exe
         run: >
           pyinstaller --noconfirm --clean --onefile --windowed
-          --name AudViewer
+          --name Sealock
           --icon icons/icon_win.ico
-          --add-data "audviewer/assets;audviewer/assets"
+          --add-data "sealock/assets;sealock/assets"
           app.py
 
       - name: Zip
-        run: Compress-Archive -Path dist/AudViewer.exe -DestinationPath AudViewer-Windows.zip
+        run: Compress-Archive -Path dist/Sealock.exe -DestinationPath Sealock-Windows.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AudViewer-Windows
-          path: AudViewer-Windows.zip
+          name: Sealock-Windows
+          path: Sealock-Windows.zip
 
   # ── macOS (Apple Silicon): .app 번들 ─────────────────────────────────
   build-macos:
@@ -59,23 +59,23 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
 
-      - name: Build AudViewer.app
+      - name: Build Sealock.app
         run: >
           pyinstaller --noconfirm --clean --windowed
-          --name AudViewer
+          --name Sealock
           --icon icons/icon_mac.icns
-          --osx-bundle-identifier com.audviewer.app
-          --add-data "audviewer/assets:audviewer/assets"
+          --osx-bundle-identifier com.sealock.app
+          --add-data "sealock/assets:sealock/assets"
           app.py
 
       # ditto 로 압축해 .app 번들의 심볼릭 링크/권한을 보존합니다.
       - name: Zip .app
-        run: ditto -c -k --sequesterRsrc --keepParent dist/AudViewer.app AudViewer-macOS.zip
+        run: ditto -c -k --sequesterRsrc --keepParent dist/Sealock.app Sealock-macOS.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AudViewer-macOS
-          path: AudViewer-macOS.zip
+          name: Sealock-macOS
+          path: Sealock-macOS.zip
 
   # ── 릴리즈: 태그 푸시일 때만, 두 압축 파일을 첨부 ─────────────────────
   release:
@@ -94,8 +94,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/AudViewer-Windows/AudViewer-Windows.zip
-            artifacts/AudViewer-macOS/AudViewer-macOS.zip
+            artifacts/Sealock-Windows/Sealock-Windows.zip
+            artifacts/Sealock-macOS/Sealock-macOS.zip
           fail_on_unmatched_files: true
           generate_release_notes: true
           append_body: true
@@ -104,9 +104,9 @@ jobs:
 
             | 플랫폼 | 파일 | 실행 |
             |--------|------|------|
-            | 🪟 Windows | `AudViewer-Windows.zip` | 압축 해제 후 `AudViewer.exe` 실행 |
-            | 🍎 macOS (Apple Silicon) | `AudViewer-macOS.zip` | 압축 해제 후 `AudViewer.app` 실행 |
+            | 🪟 Windows | `Sealock-Windows.zip` | 압축 해제 후 `Sealock.exe` 실행 |
+            | 🍎 macOS (Apple Silicon) | `Sealock-macOS.zip` | 압축 해제 후 `Sealock.app` 실행 |
 
             > **macOS 첫 실행 안내** — 코드 서명이 안 된 앱이라 Gatekeeper가 막을 수 있습니다.
-            > `AudViewer.app`을 **우클릭 → 열기**(처음 한 번만)로 여세요. 그래도 막히면 터미널에서
-            > `xattr -dr com.apple.quarantine AudViewer.app` 실행 후 다시 여세요.
+            > `Sealock.app`을 **우클릭 → 열기**(처음 한 번만)로 여세요. 그래도 막히면 터미널에서
+            > `xattr -dr com.apple.quarantine Sealock.app` 실행 후 다시 여세요.

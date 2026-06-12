@@ -1,5 +1,5 @@
 @echo off
-rem ── Package AudViewer into a single Windows .exe (dist\AudViewer.exe) ──
+rem ── Package Sealock into a single Windows .exe (dist\Sealock.exe) ──
 setlocal
 cd /d "%~dp0"
 
@@ -9,11 +9,11 @@ if not exist "%PY%" set "PY=python"
 echo [build] Ensuring PyInstaller is installed...
 "%PY%" -m pip install --upgrade pyinstaller >nul
 
-echo [build] Building AudViewer.exe...
+echo [build] Building Sealock.exe...
 "%PY%" -m PyInstaller --noconfirm --clean --onefile --windowed ^
-  --name AudViewer ^
+  --name Sealock ^
   --icon icons\icon_win.ico ^
-  --add-data "audviewer\assets;audviewer\assets" ^
+  --add-data "sealock\assets;sealock\assets" ^
   app.py
 
 if errorlevel 1 (
@@ -23,5 +23,5 @@ if errorlevel 1 (
 )
 
 echo.
-echo [build] Done -^> dist\AudViewer.exe
+echo [build] Done -^> dist\Sealock.exe
 pause

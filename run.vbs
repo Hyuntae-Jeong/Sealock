@@ -1,5 +1,5 @@
 ' ─────────────────────────────────────────────────────────────────────
-'  AudViewer — one-click launcher
+'  Sealock — one-click launcher
 '  Double-click this file to start the app.
 '  • First run shows a console window while dependencies install.
 '  • After that it launches silently (the app window appears on its own).

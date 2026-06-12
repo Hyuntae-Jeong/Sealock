@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pre-commit PII / secret scanner for the AudViewer (public) repo.
+"""Pre-commit PII / secret scanner for the Sealock (public) repo.
 
 Scans the *staged* git diff for things that must never reach a public repo:
 credentials, private keys, JDBC/connection strings with passwords, e-mail
