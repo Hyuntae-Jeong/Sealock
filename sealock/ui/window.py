@@ -639,7 +639,7 @@ class HistoryPage(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Sealock — MariaDB Audit History")
+        self.setWindowTitle("Sealock")
         self.setWindowIcon(app_icon())
         self.resize(1240, 960)
         self.setMinimumSize(1040, 740)
