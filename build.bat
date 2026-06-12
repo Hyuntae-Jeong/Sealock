@@ -13,6 +13,7 @@ echo [build] Building AudViewer.exe...
 "%PY%" -m PyInstaller --noconfirm --clean --onefile --windowed ^
   --name AudViewer ^
   --icon icons\icon_win.ico ^
+  --add-data "audviewer\assets;audviewer\assets" ^
   app.py
 
 if errorlevel 1 (

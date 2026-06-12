@@ -33,6 +33,7 @@ jobs:
           pyinstaller --noconfirm --clean --onefile --windowed
           --name AudViewer
           --icon icons/icon_win.ico
+          --add-data "audviewer/assets;audviewer/assets"
           app.py
 
       - name: Zip
@@ -64,6 +65,7 @@ jobs:
           --name AudViewer
           --icon icons/icon_mac.icns
           --osx-bundle-identifier com.audviewer.app
+          --add-data "audviewer/assets:audviewer/assets"
           app.py
 
       # ditto 로 압축해 .app 번들의 심볼릭 링크/권한을 보존합니다.

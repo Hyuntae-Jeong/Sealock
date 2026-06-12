@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QPoint, Qt, QTimer, Signal
-from PySide6.QtGui import QCursor
+from PySide6.QtGui import QCursor, QPixmap
 from PySide6.QtWidgets import (QApplication, QComboBox, QFrame, QGridLayout,
                                QHBoxLayout, QLabel, QLineEdit, QMainWindow,
                                QPushButton, QScrollArea, QSizePolicy,
                                QStackedWidget, QVBoxLayout, QWidget)
 
 from .. import services
+from ..resources import app_icon, asset_path
 from ..services import AppState
 from .widgets import (FlowLayout, Stepper, TimelineCard, button, clear_layout,
                       field, meta_badge, name_column_width, repolish, run_async,
@@ -634,6 +635,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("AudViewer — MariaDB Audit History")
+        self.setWindowIcon(app_icon())
         self.resize(1240, 960)
         self.setMinimumSize(1040, 740)
         self.state = AppState()
@@ -674,10 +676,14 @@ class MainWindow(QMainWindow):
         tb = QHBoxLayout(topbar)
         tb.setContentsMargins(28, 0, 28, 0)
 
-        mark = QLabel("A")
+        mark = QLabel()
         mark.setObjectName("brandMark")
-        mark.setAlignment(Qt.AlignCenter)
         mark.setFixedSize(38, 38)
+        _logo = QPixmap(asset_path("app.png")).scaled(
+            76, 76, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        _logo.setDevicePixelRatio(2.0)  # crisp at 38px logical on 1x and 2x displays
+        mark.setPixmap(_logo)
+        mark.setAlignment(Qt.AlignCenter)
         brand_text = QVBoxLayout()
         brand_text.setSpacing(0)
         bt = QLabel("AudViewer")

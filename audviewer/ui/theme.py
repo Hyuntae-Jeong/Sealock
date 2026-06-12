@@ -33,7 +33,7 @@ QToolTip {{ background: #2a2f4a; color: #fff; border: none; padding: 6px 9px; bo
 
 /* ── topbar ── */
 QFrame#topbar {{ background: #ffffff; border: none; border-bottom: 1px solid {C['border']}; }}
-QLabel#brandMark {{ background: {C['primary']}; color: #ffffff; font-size: 19px; font-weight: 800; border-radius: 11px; }}
+QLabel#brandMark {{ background: transparent; }}
 QLabel#brandTitle {{ font-size: 16px; font-weight: 700; color: {C['text']}; }}
 QLabel#brandSub {{ font-size: 11px; color: {C['text_faint']}; }}
 
