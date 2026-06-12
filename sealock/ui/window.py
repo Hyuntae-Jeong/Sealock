@@ -678,20 +678,24 @@ class MainWindow(QMainWindow):
 
         mark = QLabel()
         mark.setObjectName("brandMark")
-        mark.setFixedSize(38, 38)
+        mark.setFixedSize(44, 44)
         _logo = QPixmap(asset_path("app.png")).scaled(
-            76, 76, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        _logo.setDevicePixelRatio(2.0)  # crisp at 38px logical on 1x and 2x displays
+            88, 88, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        _logo.setDevicePixelRatio(2.0)  # crisp at 44px logical on 1x and 2x displays
         mark.setPixmap(_logo)
         mark.setAlignment(Qt.AlignCenter)
         brand_text = QVBoxLayout()
         brand_text.setSpacing(0)
+        brand_text.setContentsMargins(0, 0, 0, 0)
         bt = QLabel("Sealock")
         bt.setObjectName("brandTitle")
         bs = QLabel("MariaDB Envers 변경 이력 뷰어")
         bs.setObjectName("brandSub")
+        # 두 줄을 자연 높이의 한 덩어리로 묶어 세로 중앙에 정렬 → 아이콘 높이와 맞춤
+        brand_text.addStretch(1)
         brand_text.addWidget(bt)
         brand_text.addWidget(bs)
+        brand_text.addStretch(1)
         brand = QHBoxLayout()
         brand.setSpacing(12)
         brand.addWidget(mark)
