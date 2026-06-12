@@ -12,6 +12,7 @@ echo [build] Ensuring PyInstaller is installed...
 echo [build] Building AudViewer.exe...
 "%PY%" -m PyInstaller --noconfirm --clean --onefile --windowed ^
   --name AudViewer ^
+  --icon icons\icon_win.ico ^
   app.py
 
 if errorlevel 1 (

@@ -28,7 +28,24 @@ Windows · Python 3.9+ 필요.
 ```bat
 build.bat
 ```
-PyInstaller로 `dist\AudViewer.exe` (단일 실행 파일)를 생성합니다.
+PyInstaller로 `dist\AudViewer.exe` (단일 실행 파일)를 생성합니다. 아이콘은 `icons\icon_win.ico` 가 적용됩니다.
+
+## 릴리즈 (자동 배포)
+
+`v` 로 시작하는 **태그를 푸시**하면 GitHub Actions가 Windows·macOS 앱을 빌드해 릴리즈에 압축 파일로 첨부합니다. (`.github/workflows/release.yml`)
+
+```bat
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+- **첨부물:** `AudViewer-Windows.zip`(단일 `.exe`) · `AudViewer-macOS.zip`(`.app` 번들)
+- **아이콘:** Windows `icons/icon_win.ico`, macOS `icons/icon_mac.icns`
+- macOS 빌드는 **Apple Silicon(arm64)** 용입니다. Intel Mac 용도 필요하면 `runs-on: macos-13` 잡을 추가하세요.
+- macOS 앱은 코드 서명이 안 돼 있어 첫 실행 시 **우클릭 → 열기** 가 필요할 수 있습니다(릴리즈 설명에 안내 포함).
+- 태그 없이 Actions 탭에서 **수동 실행(workflow_dispatch)** 하면 릴리즈는 건너뛰고 빌드 결과물만 확인할 수 있습니다.
+
+> ⚠️ 워크플로가 동작하려면 `icons/` 폴더와 워크플로 파일이 저장소에 커밋·푸시되어 있어야 합니다.
 
 ## 🔒 보안 / 개인정보 정책 (중요)
 
