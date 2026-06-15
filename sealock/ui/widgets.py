@@ -264,7 +264,6 @@ class ThemeToggle(QPushButton):
         self.setObjectName("themeToggle")
         self.setFixedSize(68, 34)
         self.setCursor(Qt.PointingHandCursor)
-        self.setToolTip("테마 전환 (라이트 / 다크)")
         self._base = 0.0  # orbit angle (radians), accumulated one way
         self._hover = False
         self._anim = QPropertyAnimation(self, b"angle", self)
