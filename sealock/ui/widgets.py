@@ -7,12 +7,13 @@ from PySide6.QtCore import (Property, QEasingCurve, QObject, QPoint, QPointF,
                             QPropertyAnimation, QRect, QRectF, QRunnable, QSize,
                             Qt, QThreadPool, QTimer, Signal)
 from PySide6.QtGui import (QColor, QFont, QFontMetrics, QLinearGradient,
-                           QPainter, QPainterPath, QPen, QPolygonF,
+                           QPainter, QPainterPath, QPen, QPixmap, QPolygonF,
                            QRadialGradient)
 from PySide6.QtWidgets import (QApplication, QFrame, QGraphicsDropShadowEffect,
                                QHBoxLayout, QLabel, QLayout, QLineEdit,
                                QPushButton, QSizePolicy, QVBoxLayout, QWidget)
 
+from ..resources import asset_path
 from .theme import C
 
 
@@ -243,31 +244,64 @@ class Stepper(QWidget):
             set_state(line, "done" if n > i else "todo")
 
 
-# ── theme toggle ────────────────────────────────────────────────────────
-class ThemeToggle(QPushButton):
-    """A wide button that animates a sunrise / sunset along a large orbit.
+# ── brand mark (mascot + sunrise/sunset, doubles as the theme toggle) ─────
+def _draw_sun(p: QPainter, x: float, y: float, r: float) -> None:
+    p.setPen(QPen(QColor("#FFB23E"), 1.7, Qt.SolidLine, Qt.RoundCap))
+    for i in range(8):
+        a = i * math.pi / 4
+        p.drawLine(QPointF(x + math.cos(a) * (r + 2.4), y + math.sin(a) * (r + 2.4)),
+                   QPointF(x + math.cos(a) * (r + 4.7), y + math.sin(a) * (r + 4.7)))
+    g = QRadialGradient(x - 1.6, y - 1.6, r * 1.7)
+    g.setColorAt(0.0, QColor("#FFE680"))
+    g.setColorAt(1.0, QColor("#FF9F1C"))
+    p.setPen(Qt.NoPen)
+    p.setBrush(g)
+    p.drawEllipse(QPointF(x, y), r, r)
 
-    The sun and moon ride one big circle whose centre sits well *below* the
-    button, so only the arc's apex shows in the rectangular sky. Each toggle
-    advances the orbit half a turn in the *same* direction (clockwise): the sun
-    slides down to the right while the moon climbs in from the left, and on the
-    way back the moon sets to the right while the sun rises from the left — it
-    never rewinds. ``angle`` (radians) is what the host animates; even multiples
-    of π are light (sun at apex), odd multiples are dark (moon at apex).
+
+def _draw_moon(p: QPainter, x: float, y: float, r: float) -> None:
+    disc = QPainterPath()
+    disc.addEllipse(QPointF(x, y), r, r)
+    cut = QPainterPath()
+    cut.addEllipse(QPointF(x + 3.4, y - 2.6), r, r)
+    g = QLinearGradient(x - r, y - r, x + r, y + r)
+    g.setColorAt(0.0, QColor("#FFF3B0"))
+    g.setColorAt(1.0, QColor("#F6C544"))
+    p.setPen(Qt.NoPen)
+    p.setBrush(g)
+    p.drawPath(disc.subtracted(cut))
+
+
+class BrandMark(QWidget):
+    """The mascot with a sunrise / sunset orbiting behind it — also the theme
+    toggle. Sun and moon ride one big circle centred below the widget, so only
+    the arc's top shows; the mascot is painted in front (transparent PNG), so
+    the bodies are hidden as they swing behind it and only appear in the open
+    upper-left — they look like they rise and set from behind the seal. Clicking
+    emits ``clicked``; each toggle advances the orbit another half-turn the same
+    way (``angle``, in radians, is animated by the host).
     """
 
-    # Orbit geometry, in the button's 68x34 coordinate space.
-    _CY, _R, _RAD = 54.9, 39.9, 7.0
+    clicked = Signal()
+
+    _MS = 60                    # mascot size (px)
+    _PAD_L, _PAD_T = 16, 2      # mascot offset → sky room opens at the left/top
+    _CX, _CY, _R = 21.0, 45.0, 30.0       # orbit: wide, apex at upper-left
+    _SUN_RAD, _MOON_RAD = 5.0, 8.0        # sun smaller so its rays clear the lower edge when set
 
     def __init__(self) -> None:
         super().__init__()
-        self.setObjectName("themeToggle")
-        self.setFixedSize(68, 34)
+        self.setObjectName("brandMark")
+        self.setFixedSize(self._PAD_L + self._MS, self._PAD_T + self._MS + 2)
+        self.setAttribute(Qt.WA_TranslucentBackground)
         self.setCursor(Qt.PointingHandCursor)
         self._base = 0.0  # orbit angle (radians), accumulated one way
-        self._hover = False
+        pm = QPixmap(asset_path("app.png")).scaled(
+            self._MS * 2, self._MS * 2, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        pm.setDevicePixelRatio(2.0)  # crisp on 1x/2x displays
+        self._pix = pm
         self._anim = QPropertyAnimation(self, b"angle", self)
-        self._anim.setDuration(1400)
+        self._anim.setDuration(1050)
         self._anim.setEasingCurve(QEasingCurve.InOutCubic)
 
     def set_dark(self, dark: bool, animate: bool = False) -> None:
@@ -292,61 +326,20 @@ class ThemeToggle(QPushButton):
 
     angle = Property(float, _get_angle, _set_angle)
 
-    def enterEvent(self, e) -> None:
-        self._hover = True
-        self.update()
-        super().enterEvent(e)
-
-    def leaveEvent(self, e) -> None:
-        self._hover = False
-        self.update()
-        super().leaveEvent(e)
+    def mousePressEvent(self, e) -> None:
+        if e.button() == Qt.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(e)
 
     def paintEvent(self, e) -> None:
-        super().paintEvent(e)  # transparent background from the QSS
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
-        w, h = self.width(), self.height()
-        cx = w / 2.0
-
-        # Clip to the rounded rectangle; its bottom edge acts as the horizon, so
-        # a body that swings past it simply sinks out of sight.
-        face = QPainterPath()
-        face.addRoundedRect(QRectF(0, 0, w, h), 8, 8)
-        p.setClipPath(face)
-
-        rad = self._RAD * (1.12 if self._hover else 1.0)  # subtle hover feedback
         b = self._base
-        self._sun(p, cx + self._R * math.sin(b), self._CY - self._R * math.cos(b), rad)
-        self._moon(p, cx + self._R * math.sin(b + math.pi),
-                   self._CY - self._R * math.cos(b + math.pi), rad)
-
-    @staticmethod
-    def _sun(p: QPainter, x: float, y: float, r: float) -> None:
-        p.setPen(QPen(QColor("#FFB23E"), 1.7, Qt.SolidLine, Qt.RoundCap))
-        for i in range(8):
-            a = i * math.pi / 4
-            p.drawLine(QPointF(x + math.cos(a) * (r + 2.4), y + math.sin(a) * (r + 2.4)),
-                       QPointF(x + math.cos(a) * (r + 4.7), y + math.sin(a) * (r + 4.7)))
-        g = QRadialGradient(x - 1.6, y - 1.6, r * 1.7)
-        g.setColorAt(0.0, QColor("#FFE680"))
-        g.setColorAt(1.0, QColor("#FF9F1C"))
-        p.setPen(Qt.NoPen)
-        p.setBrush(g)
-        p.drawEllipse(QPointF(x, y), r, r)
-
-    @staticmethod
-    def _moon(p: QPainter, x: float, y: float, r: float) -> None:
-        disc = QPainterPath()
-        disc.addEllipse(QPointF(x, y), r, r)
-        cut = QPainterPath()
-        cut.addEllipse(QPointF(x + 3.4, y - 2.6), r, r)
-        g = QLinearGradient(x - r, y - r, x + r, y + r)
-        g.setColorAt(0.0, QColor("#FFF3B0"))
-        g.setColorAt(1.0, QColor("#F6C544"))
-        p.setPen(Qt.NoPen)
-        p.setBrush(g)
-        p.drawPath(disc.subtracted(cut))
+        _draw_sun(p, self._CX + self._R * math.sin(b),
+                  self._CY - self._R * math.cos(b), self._SUN_RAD)
+        _draw_moon(p, self._CX - self._R * math.sin(b),
+                   self._CY + self._R * math.cos(b), self._MOON_RAD)
+        p.drawPixmap(self._PAD_L, self._PAD_T, self._pix)  # mascot in front
 
 
 # ── timeline pieces ─────────────────────────────────────────────────────

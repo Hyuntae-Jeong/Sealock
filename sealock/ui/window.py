@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import (QEasingCurve, QEvent, QPoint, QPropertyAnimation,
                             Qt, QTimer, Signal)
-from PySide6.QtGui import QCursor, QPixmap
+from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (QApplication, QComboBox, QFrame,
                                QGraphicsOpacityEffect, QGridLayout,
                                QHBoxLayout, QLabel, QLineEdit, QMainWindow,
@@ -11,10 +11,10 @@ from PySide6.QtWidgets import (QApplication, QComboBox, QFrame,
                                QStackedWidget, QVBoxLayout, QWidget)
 
 from .. import services, settings
-from ..resources import app_icon, asset_path
+from ..resources import app_icon
 from ..services import AppState
 from . import theme
-from .widgets import (FlowLayout, Stepper, ThemeToggle, TimelineCard, button,
+from .widgets import (BrandMark, FlowLayout, Stepper, TimelineCard, button,
                       clear_layout, field, meta_badge, name_column_width,
                       repolish, run_async, soft_shadow, summary_bar,
                       timeline_node)
@@ -685,16 +685,11 @@ class MainWindow(QMainWindow):
         topbar.setObjectName("topbar")
         topbar.setFixedHeight(70)
         tb = QHBoxLayout(topbar)
-        tb.setContentsMargins(28, 0, 28, 0)
+        tb.setContentsMargins(10, 0, 28, 0)
 
-        mark = QLabel()
-        mark.setObjectName("brandMark")
-        mark.setFixedSize(44, 44)
-        _logo = QPixmap(asset_path("app.png")).scaled(
-            88, 88, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        _logo.setDevicePixelRatio(2.0)  # crisp at 44px logical on 1x and 2x displays
-        mark.setPixmap(_logo)
-        mark.setAlignment(Qt.AlignCenter)
+        self._brand = BrandMark()
+        self._brand.set_dark(theme.is_dark())
+        self._brand.clicked.connect(self._toggle_theme)
         brand_text = QVBoxLayout()
         brand_text.setSpacing(0)
         brand_text.setContentsMargins(0, 0, 0, 0)
@@ -709,18 +704,13 @@ class MainWindow(QMainWindow):
         brand_text.addStretch(1)
         brand = QHBoxLayout()
         brand.setSpacing(12)
-        brand.addWidget(mark)
+        brand.addWidget(self._brand)
         brand.addLayout(brand_text)
 
         self.stepper = Stepper(["연결", "테이블", "이력"])
         tb.addLayout(brand)
         tb.addStretch(1)
         tb.addWidget(self.stepper)
-        tb.addSpacing(18)
-        self._theme_btn = ThemeToggle()
-        self._theme_btn.set_dark(theme.is_dark())
-        self._theme_btn.clicked.connect(self._toggle_theme)
-        tb.addWidget(self._theme_btn)
         return topbar
 
     def _toggle_theme(self) -> None:
@@ -737,7 +727,7 @@ class MainWindow(QMainWindow):
         bar_shot.setGeometry(self._topbar.rect())
         bar_shot.show()
         bar_shot.raise_()
-        self._theme_btn.raise_()  # keep the animating button above its snapshot
+        self._brand.raise_()  # keep the animating mascot above its snapshot
 
         body_shot = QLabel(self.centralWidget())
         body_shot.setPixmap(self.stack.grab())
@@ -754,8 +744,8 @@ class MainWindow(QMainWindow):
                 w.update()
         settings.save_theme(name)
 
-        # 3. animate the button + dissolve the snapshots to reveal the new theme
-        self._theme_btn.set_dark(theme.is_dark(), animate=True)
+        # 3. animate the mascot + dissolve the snapshots to reveal the new theme
+        self._brand.set_dark(theme.is_dark(), animate=True)
         self._dissolve(bar_shot)
         self._dissolve(body_shot)
 
