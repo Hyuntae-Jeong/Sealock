@@ -1,6 +1,12 @@
-# Sealock
+<p align="center">
+  <img src="icons/icon_mac_1024.png" alt="Sealock 아이콘" width="200">
+</p>
 
-> MariaDB **Hibernate Envers** (`*_AUD`) 변경 이력을 사람이 보기 좋게 보여주는 데스크톱 도구
+<h1 align="center">Sealock</h1>
+
+<p align="center">
+  MariaDB <b>Hibernate Envers</b> (<code>*_AUD</code>) 변경 이력을 사람이 보기 좋게 보여주는 데스크톱 도구
+</p>
 
 Envers 감사 테이블은 변경된 컬럼을 `<컬럼>_MOD = 1` 플래그로만 표시하고, 저장하는 값은 *변경 후* 값뿐이라 "무엇이 무엇으로 바뀌었는지" 한눈에 보기 어렵습니다. Sealock는 리비전을 시간순으로 따라가며 **이전 값 → 이후 값** diff를 깔끔한 타임라인으로 보여줍니다.
 
