@@ -98,4 +98,4 @@ build.bat              .exe 패키징
 
 ## 라이선스
 
-TBD.
+[MIT](LICENSE) © 2026 Hyuntae Jeong
