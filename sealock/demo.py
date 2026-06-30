@@ -13,7 +13,21 @@ def _ms(y, mo, d, h, mi, s) -> int:
     return int(_dt.datetime(y, mo, d, h, mi, s).timestamp() * 1000)
 
 
-def preview() -> dict:
+CONFIG_TABLE = "notification_mass_block_config_AUD"
+
+
+def preview(table: str | None = None) -> dict:
+    """Dispatch to the right synthetic table preview by name.
+
+    The `name`-keyed config table has no `id`, so it flows through the
+    all-records revision timeline; everything else uses the member example.
+    """
+    if table == CONFIG_TABLE:
+        return _preview_config()
+    return _preview_member()
+
+
+def _preview_member() -> dict:
     """Mirror of introspect.describe_table() for a `member_AUD` table."""
     return {
         "table": "member_AUD",
@@ -38,6 +52,52 @@ def preview() -> dict:
         "revinfo": {"found": True, "table": "REVINFO", "rev_column": "REV", "ts_column": "REVTSTMP"},
         "all_columns": [{"name": "id", "type": "bigint(20)"}],
     }
+
+
+def _preview_config() -> dict:
+    """Mirror of introspect.describe_table() for a `name`-keyed config table —
+    no `id`, so Sealock browses its whole revision timeline."""
+    return {
+        "table": CONFIG_TABLE,
+        "rev_column": "REV",
+        "revtype_column": "REVTYPE",
+        "has_mod_flags": True,
+        "mod_flag_columns": ["value_MOD", "value_type_MOD"],
+        "identifier_columns": ["name"],
+        "identifier_default": "name",
+        "data_columns": [
+            {"name": "value", "type": "varchar(1000)", "mod_flag": "value_MOD"},
+            {"name": "value_type", "type": "int(11)", "mod_flag": "value_type_MOD"},
+        ],
+        "system_columns": [
+            {"name": "REV", "type": "bigint(20)"},
+            {"name": "REVTYPE", "type": "tinyint(4)"},
+        ],
+        "orphan_mod_flags": [],
+        "revinfo": {"found": True, "table": "REVINFO", "rev_column": "REV", "ts_column": "REVTSTMP"},
+        "all_columns": [{"name": "name", "type": "varchar(100)"}],
+    }
+
+
+def _cfg(rev, rtype, ts, name, value, vmod, vt=13, vtmod=0):
+    return {"REV": rev, "REVTYPE": rtype, "__revts": ts, "name": name,
+            "value": value, "value_MOD": vmod, "value_type": vt, "value_type_MOD": vtmod}
+
+
+def full_history(before_rev=None) -> dict:
+    """All-records changeset page for the demo config table: three settings
+    created together, then edited in two later revisions. One page only."""
+    if before_rev is not None:          # demo has a single page — nothing older
+        return {"rows": [], "baseline": [], "min_rev": None, "has_more": False}
+    c, e, t = _ms(2025, 6, 13, 15, 0, 28), _ms(2026, 6, 20, 9, 14, 2), _ms(2026, 6, 28, 15, 0, 28)
+    rows = [  # ordered by name, then REV ascending (as the live query returns)
+        _cfg(100, 0, c, "notification.mass.block.check_interval_sec", "5", 1),
+        _cfg(100, 0, c, "notification.mass.block.enable", "0", 1),
+        _cfg(151, 1, t, "notification.mass.block.enable", "1", 1),
+        _cfg(100, 0, c, "notification.mass.block.threshold_count", "30", 1),
+        _cfg(142, 1, e, "notification.mass.block.threshold_count", "50", 1),
+    ]
+    return {"rows": rows, "baseline": [], "min_rev": 100, "has_more": False}
 
 
 def rows() -> list[dict]:

@@ -7,7 +7,12 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sealock.history import build_timeline, summarize  # noqa: E402
+from sealock.history import (  # noqa: E402
+    build_changeset_timeline,
+    build_timeline,
+    summarize,
+    summarize_changeset,
+)
 
 # Classification mirroring what introspect.classify() would produce for a
 # `member_AUD` table with modified-flags enabled.
@@ -181,6 +186,72 @@ def test_summary():
     s = summarize(tl, "id", "42")
     assert s["revisions"] == 4
     assert s["total_changes"] == 4 + 1 + 2 + 0
+    assert s["first_ts"] and s["last_ts"]
+
+
+# ── all-records changeset view (id-less / config tables) ─────────────────
+# A `name`-keyed config table: two settings, edited across shared revisions.
+CONFIG_CLS = {
+    "rev_column": "REV",
+    "revtype_column": "REVTYPE",
+    "identifier_columns": ["name"],
+    "data_columns": [{"name": "value", "type": "varchar", "mod_flag": "value_MOD"}],
+}
+CONFIG_ROWS = [  # ordered by name, then REV ascending (as the query returns)
+    {"REV": 10, "REVTYPE": 0, "__revts": 1704672750000, "name": "enable",
+     "value": "0", "value_MOD": 1},
+    {"REV": 12, "REVTYPE": 1, "__revts": 1707896405000, "name": "enable",
+     "value": "1", "value_MOD": 1},
+    {"REV": 10, "REVTYPE": 0, "__revts": 1704672750000, "name": "threshold",
+     "value": "30", "value_MOD": 1},
+    {"REV": 12, "REVTYPE": 1, "__revts": 1707896405000, "name": "threshold",
+     "value": "50", "value_MOD": 1},
+]
+
+
+def test_changeset_groups_records_under_one_revision():
+    tl = build_changeset_timeline(CONFIG_ROWS, CONFIG_CLS)
+    assert [n["rev"] for n in tl] == [12, 10]          # newest revision first
+    rev12 = tl[0]
+    assert rev12["record_count"] == 2                  # both settings in rev 12
+    idents = {r["identifier"] for r in rev12["records"]}
+    assert idents == {"name = enable", "name = threshold"}
+
+
+def test_changeset_snapshot_is_per_record():
+    tl = build_changeset_timeline(CONFIG_ROWS, CONFIG_CLS)
+    rev12 = {r["identifier"]: r for r in tl[0]["records"]}
+    enable = rev12["name = enable"]["changes"][0]
+    thresh = rev12["name = threshold"]["changes"][0]
+    # Each record diffs against ITS OWN prior value, not a shared snapshot.
+    assert enable["old"] == "0" and enable["new"] == "1"
+    assert thresh["old"] == "30" and thresh["new"] == "50"
+
+
+def test_changeset_create_shows_full_snapshot():
+    tl = build_changeset_timeline(CONFIG_ROWS, CONFIG_CLS)
+    rev10 = tl[1]
+    assert rev10["kind"] == "create"
+    rec = rev10["records"][0]
+    assert rec["changes"][0]["old"] is None            # CREATED -> new only
+    assert rec["changes"][0]["kind"] == "create"
+
+
+def test_changeset_baseline_seeds_old_value_at_window_edge():
+    # Only rev 12 is in-window; baseline carries the pre-window value of `enable`.
+    window = [r for r in CONFIG_ROWS if r["REV"] == 12 and r["name"] == "enable"]
+    baseline = [{"name": "enable", "value": "0"}]
+    tl = build_changeset_timeline(window, CONFIG_CLS, baseline_rows=baseline)
+    ch = tl[0]["records"][0]["changes"][0]
+    assert ch["old"] == "0" and ch["new"] == "1"       # resolved from baseline
+
+
+def test_summarize_changeset():
+    tl = build_changeset_timeline(CONFIG_ROWS, CONFIG_CLS)
+    s = summarize_changeset(tl, "config_AUD")
+    assert s["revisions"] == 2
+    assert s["records"] == 2
+    assert s["total_changes"] == 2 + 2                 # rev12: 2, rev10: 2
     assert s["first_ts"] and s["last_ts"]
 
 

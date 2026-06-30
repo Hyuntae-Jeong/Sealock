@@ -106,6 +106,53 @@ def _flag_change(label):
     return {"column": label, "label": label, "old": None, "new": None, "kind": "flag"}
 
 
+def _coerce_revtype(value) -> int:
+    """Normalise a REVTYPE cell to 0/1/2, defaulting to MOD (1)."""
+    try:
+        return int(value) if value is not None else 1
+    except (TypeError, ValueError):
+        return 1
+
+
+def _diff_row(row, rtype, data_cols, orphan_flags, state) -> list[dict]:
+    """Compute one revision's change rows, mutating ``state`` (the running
+    last-known snapshot of this record) as we go.
+
+    Shared by the single-record timeline and the all-records changeset view.
+    """
+    changes: list[dict] = []
+
+    if rtype == 0:  # ADD — show the full initial snapshot
+        for dc in data_cols:
+            val = row.get(dc["name"])
+            if val is not None:
+                changes.append(_change(dc["name"], None, val, "create"))
+            state[dc["name"]] = val
+        for of in orphan_flags:
+            if _truthy(row.get(of["name"])):
+                changes.append(_flag_change(of["label"]))
+
+    elif rtype == 2:  # DEL — record vanished; carry snapshot untouched
+        pass
+
+    else:  # MOD — diff changed columns against the running snapshot
+        for dc in data_cols:
+            val = row.get(dc["name"])
+            flag = dc.get("mod_flag")
+            if flag and flag in row:
+                changed = _truthy(row.get(flag))
+            else:
+                changed = val != state.get(dc["name"])
+            if changed:
+                changes.append(_change(dc["name"], state.get(dc["name"]), val, "update"))
+            state[dc["name"]] = val
+        for of in orphan_flags:
+            if _truthy(row.get(of["name"])):
+                changes.append(_flag_change(of["label"]))
+
+    return changes
+
+
 def build_timeline(rows: list[dict], classification: dict) -> list[dict]:
     """Build an ordered list of revision nodes from raw audit rows.
 
@@ -122,45 +169,11 @@ def build_timeline(rows: list[dict], classification: dict) -> list[dict]:
 
     for row in rows:
         rev = row.get(rev_col) if rev_col else None
-        rtype = row.get(revtype_col) if revtype_col else 1
-        try:
-            rtype = int(rtype) if rtype is not None else 1
-        except (TypeError, ValueError):
-            rtype = 1
+        rtype = _coerce_revtype(row.get(revtype_col) if revtype_col else 1)
         meta = REVTYPE_META.get(rtype, REVTYPE_META[1])
         ts_ms = row.get("__revts")
 
-        changes: list[dict] = []
-
-        if rtype == 0:  # ADD — show the full initial snapshot
-            for dc in data_cols:
-                val = row.get(dc["name"])
-                if val is not None:
-                    changes.append(_change(dc["name"], None, val, "create"))
-                state[dc["name"]] = val
-            for of in orphan_flags:
-                if _truthy(row.get(of["name"])):
-                    changes.append(_flag_change(of["label"]))
-
-        elif rtype == 2:  # DEL — record vanished; carry snapshot untouched
-            pass
-
-        else:  # MOD — diff changed columns against the running snapshot
-            for dc in data_cols:
-                val = row.get(dc["name"])
-                flag = dc.get("mod_flag")
-                if flag and flag in row:
-                    changed = _truthy(row.get(flag))
-                else:
-                    changed = val != state.get(dc["name"])
-                if changed:
-                    changes.append(
-                        _change(dc["name"], state.get(dc["name"]), val, "update")
-                    )
-                state[dc["name"]] = val
-            for of in orphan_flags:
-                if _truthy(row.get(of["name"])):
-                    changes.append(_flag_change(of["label"]))
+        changes = _diff_row(row, rtype, data_cols, orphan_flags, state)
 
         timeline.append(
             {
@@ -180,6 +193,80 @@ def build_timeline(rows: list[dict], classification: dict) -> list[dict]:
     return timeline
 
 
+def build_changeset_timeline(
+    rows: list[dict], classification: dict, baseline_rows: list[dict] | None = None
+) -> list[dict]:
+    """Build an all-records, revision-grouped timeline (newest rev first).
+
+    Used for tables browsed without an identifier (e.g. ``name``-keyed config
+    tables): every revision becomes one node whose ``records`` list holds the
+    per-record diffs that happened in that revision.
+
+    ``rows`` must be ordered by identifier, then REV ascending, so each record's
+    running snapshot is built in order. ``baseline_rows`` (each record's last
+    state *before* the loaded window) seed those snapshots so the oldest shown
+    diff still resolves a correct "before" value at the window edge.
+    """
+    revtype_col = classification["revtype_column"]
+    data_cols = classification["data_columns"]
+    orphan_flags = classification.get("orphan_mod_flags", [])
+    ident_cols = classification.get("identifier_columns") or []
+
+    def ident_key(row):
+        return tuple(row.get(c) for c in ident_cols)
+
+    def ident_label(row):
+        return " · ".join(f"{c} = {_display(row.get(c))}" for c in ident_cols)
+
+    # Seed each record's snapshot from its last-known state before the window.
+    states: dict = {}
+    for br in baseline_rows or []:
+        states[ident_key(br)] = {dc["name"]: br.get(dc["name"]) for dc in data_cols}
+
+    nodes: dict = {}  # rev -> node (insertion order is identifier-then-rev)
+    for row in rows:
+        rev = row.get(classification["rev_column"])
+        rtype = _coerce_revtype(row.get(revtype_col) if revtype_col else 1)
+        meta = REVTYPE_META.get(rtype, REVTYPE_META[1])
+        state = states.setdefault(ident_key(row), {})
+
+        changes = _diff_row(row, rtype, data_cols, orphan_flags, state)
+
+        node = nodes.get(rev)
+        if node is None:
+            ts_ms = row.get("__revts")
+            node = nodes[rev] = {
+                "rev": rev,
+                "timestamp_ms": ts_ms,
+                "timestamp": _format_ts(ts_ms),
+                "records": [],
+                "_kinds": set(),
+            }
+        node["_kinds"].add(meta["kind"])
+        node["records"].append(
+            {
+                "identifier": ident_label(row),
+                "revtype": rtype,
+                "revtype_label": meta["label"],
+                "revtype_ko": meta["ko"],
+                "kind": meta["kind"],
+                "deleted": rtype == 2,
+                "changes": changes,
+            }
+        )
+
+    timeline = []
+    for rev in sorted(nodes, key=lambda r: (r is None, r), reverse=True):
+        node = nodes[rev]
+        kinds = node.pop("_kinds")
+        # Rev-level kind drives the rail colour; mixed revisions read as "update".
+        node["kind"] = next(iter(kinds)) if len(kinds) == 1 else "update"
+        node["record_count"] = len(node["records"])
+        node["change_count"] = sum(len(r["changes"]) for r in node["records"])
+        timeline.append(node)
+    return timeline
+
+
 def summarize(timeline: list[dict], identifier_column, identifier_value) -> dict:
     times = [n["timestamp"] for n in timeline if n.get("timestamp")]
     total_changes = sum(len(n["changes"]) for n in timeline)
@@ -188,6 +275,22 @@ def summarize(timeline: list[dict], identifier_column, identifier_value) -> dict
         "identifier_value": identifier_value,
         "revisions": len(timeline),
         "total_changes": total_changes,
+        "first_ts": times[0] if times else None,
+        "last_ts": times[-1] if times else None,
+    }
+
+
+def summarize_changeset(timeline: list[dict], table) -> dict:
+    """Roll up an all-records changeset timeline for the summary bar."""
+    times = sorted(n["timestamp"] for n in timeline if n.get("timestamp"))
+    records = {
+        rec["identifier"] for n in timeline for rec in n.get("records", [])
+    }
+    return {
+        "table": table,
+        "revisions": len(timeline),
+        "records": len(records),
+        "total_changes": sum(n.get("change_count", 0) for n in timeline),
         "first_ts": times[0] if times else None,
         "last_ts": times[-1] if times else None,
     }

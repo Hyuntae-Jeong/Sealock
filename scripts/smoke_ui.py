@@ -39,10 +39,23 @@ def main() -> int:
     win.page_hist._empty({"column": "id", "value": "999"})
     win.page_hist._placeholder()
 
-    win.toast("smoke test toast", error=False)
+    # name-keyed config table: search mode works too, plus the "전체 이력" toggle.
+    win.page_table._render_preview(demo.preview(demo.CONFIG_TABLE))
+    services.confirm_table(st, demo.CONFIG_TABLE, None)
+    ph = win.page_hist
+    ph.on_enter()                       # defaults to search mode, no async load
+    ph._set_mode("search")
+    ph._mode = "full"
+    r = services.get_full_history(st)
+    ph._cs_nodes = list(r["timeline"])
+    ph._cs_min_rev, ph._cs_has_more = r["min_rev"], True   # force "더 보기" branch
+    ph._render_changeset()
+    ph._cs_has_more = False
+    ph._render_changeset()
+    ph._empty_full()
     app.processEvents()
 
-    print("[smoke] OK - MainWindow built; preview, timeline, empty & placeholder states rendered.")
+    print("[smoke] OK - MainWindow built; search + full-history toggle views rendered.")
     return 0
 
 

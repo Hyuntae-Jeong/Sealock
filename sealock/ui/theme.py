@@ -189,6 +189,13 @@ QLabel#tdType {{ color: {c['text_soft']}; font-size: 12px; font-family: {MONO}; 
 QLabel#flagYes {{ color: {c['green']}; font-weight: 700; font-size: 12px; font-family: {MONO}; }}
 QLabel#flagNo {{ color: {c['text_faint']}; font-size: 12px; }}
 
+/* ── mode toggle (step 3) ── */
+QFrame#segToggle {{ background: {c['surface2']}; border: 1px solid {c['border_strong']}; border-radius: 11px; }}
+QPushButton#segBtn {{ background: transparent; border: 2px solid transparent; border-radius: 8px;
+    color: {c['text_soft']}; min-height: 32px; padding: 0 16px; font-size: 13px; font-weight: 600; }}
+QPushButton#segBtn:hover {{ color: {c['text']}; }}
+QPushButton#segBtn[active="true"] {{ background: {c['surface']}; color: {c['primary_700']}; }}
+
 /* ── summary + timeline (step 3) ── */
 QFrame#summaryBar {{ background: {c['surface3']}; border: 1px solid {c['border']}; border-radius: 10px; }}
 QLabel#sumK {{ color: {c['text_faint']}; font-size: 11px; font-weight: 600; }}
@@ -203,6 +210,8 @@ QLabel#typeUpdate {{ background: {c['info_bg']}; color: {c['info_text']}; border
 QLabel#typeDelete {{ background: {c['danger_bg']}; color: {c['danger_text']}; border-radius: 9px; padding: 3px 11px; font-size: 11px; font-weight: 700; }}
 QLabel#tlTime {{ color: {c['text_faint']}; font-size: 12px; font-family: {MONO}; }}
 QLabel#tlChevron {{ color: {c['text_faint']}; font-size: 13px; padding: 0 2px; }}
+QLabel#recIdent {{ color: {c['text_faint']}; font-size: 12px; font-family: {MONO}; padding: 8px 0 2px 0; }}
+QFrame#recSep {{ border: none; border-top: 1px solid {c['border']}; max-height: 1px; min-height: 1px; }}
 QLabel#tlChevron:hover {{ color: {c['primary']}; }}
 QLabel#colName {{ color: {c['text']}; font-weight: 600; font-size: 13px; font-family: {MONO}; }}
 QLabel#valOld {{ background: {c['danger_bg']}; color: {c['danger_text']}; border: 1px solid {c['danger_border']}; border-radius: 7px; padding: 3px 9px; font-size: 12px; font-family: {MONO}; }}

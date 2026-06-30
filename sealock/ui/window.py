@@ -15,9 +15,9 @@ from ..resources import app_icon
 from ..services import AppState
 from . import theme
 from .widgets import (BrandMark, FlowLayout, Stepper, TimelineCard, button,
-                      clear_layout, field, meta_badge, name_column_width,
-                      repolish, run_async, soft_shadow, summary_bar,
-                      timeline_node)
+                      changeset_summary_bar, clear_layout, field, meta_badge,
+                      name_column_width, repolish, run_async, soft_shadow,
+                      summary_bar, timeline_node)
 
 
 def _title(text: str) -> QLabel:
@@ -436,6 +436,10 @@ class HistoryPage(QWidget):
         self.state = state
         self._cards: list[TimelineCard] = []
         self._selected = -1
+        self._mode = "search"           # "search" | "full"
+        self._cs_nodes: list[dict] = []  # accumulated changeset nodes (paged)
+        self._cs_min_rev = None
+        self._cs_has_more = False
 
         card = QFrame()
         card.setObjectName("card")
@@ -458,7 +462,31 @@ class HistoryPage(QWidget):
         cv.addLayout(head_row)
         cv.addSpacing(18)
 
-        inp = QHBoxLayout()
+        # Mode toggle — every table offers both: search by identifier value, or
+        # browse the whole table's revision timeline.
+        self.mode_bar = QFrame()
+        self.mode_bar.setObjectName("segToggle")
+        mh = QHBoxLayout(self.mode_bar)
+        mh.setContentsMargins(3, 3, 3, 3)
+        mh.setSpacing(3)
+        self.search_tab = QPushButton("🔍  식별자 검색")
+        self.full_tab = QPushButton("🕒  전체 이력")
+        for tab in (self.search_tab, self.full_tab):
+            tab.setObjectName("segBtn")
+            tab.setCheckable(True)
+            tab.setCursor(Qt.PointingHandCursor)
+            mh.addWidget(tab)
+        mode_row = QHBoxLayout()
+        mode_row.addWidget(self.mode_bar)
+        mode_row.addStretch(1)
+        cv.addLayout(mode_row)
+        cv.addSpacing(14)
+        self.search_tab.clicked.connect(lambda: self._set_mode("search"))
+        self.full_tab.clicked.connect(lambda: self._set_mode("full"))
+
+        self.input_row = QWidget()
+        inp = QHBoxLayout(self.input_row)
+        inp.setContentsMargins(0, 0, 0, 0)
         inp.setSpacing(12)
         id_box = QVBoxLayout()
         id_box.setSpacing(7)
@@ -474,7 +502,7 @@ class HistoryPage(QWidget):
         btn_wrap.addWidget(self.load_btn)
         inp.addLayout(id_box, 1)
         inp.addLayout(btn_wrap)
-        cv.addLayout(inp)
+        cv.addWidget(self.input_row)
 
         self.result_container = QWidget()
         self.result_layout = QVBoxLayout(self.result_container)
@@ -502,10 +530,35 @@ class HistoryPage(QWidget):
         ctx = self.state.context or {}
         ident = ctx.get("identifier_column", "ID")
         self.id_caption.setText(ident)
-        self.desc.setText(f"'{ctx.get('table')}' 테이블에서 {ident} 값을 기준으로 변경 이력을 조회합니다.")
-        self.id_edit.setText("42" if self.state.demo else "")
-        self._placeholder()
-        self.id_edit.setFocus()
+        # Placeholder example only in demo/test mode — in real use a fixed
+        # example wrongly implies a required format (the "예: 42" that misled).
+        self.id_edit.clear()
+        self.id_edit.setPlaceholderText(self._demo_example(ident) if self.state.demo else "")
+        self._set_mode("search")          # default mode on entry
+
+    @staticmethod
+    def _demo_example(ident: str) -> str:
+        return "예: notification.mass.block.enable" if ident.lower() == "name" else "예: 42"
+
+    def _set_mode(self, mode: str) -> None:
+        self._mode = mode
+        is_search = mode == "search"
+        for tab, on in ((self.search_tab, is_search), (self.full_tab, not is_search)):
+            tab.setChecked(on)
+            tab.setProperty("active", on)
+            repolish(tab)
+        self.input_row.setVisible(is_search)
+        ctx = self.state.context or {}
+        table = ctx.get("table")
+        if is_search:
+            ident = ctx.get("identifier_column", "ID")
+            self.desc.setText(f"'{table}' 테이블에서 {ident} 값을 기준으로 변경 이력을 조회합니다.")
+            self._placeholder()
+            self.id_edit.setFocus()
+        else:
+            self.desc.setText(f"'{table}' 테이블의 전체 변경 이력을 리비전 최신순으로 보여줍니다.")
+            self._cs_nodes, self._cs_min_rev, self._cs_has_more = [], None, False
+            self._load_full()
 
     def _load(self) -> None:
         idv = self.id_edit.text().strip()
@@ -526,6 +579,82 @@ class HistoryPage(QWidget):
             self.error.emit(msg)
 
         run_async(services.get_history, ok, err, self.state, idv)
+
+    # ── full-history (id-less tables): rev-grouped, paged ───────────────
+    def _load_full(self, before_rev=None) -> None:
+        self.load_btn.setEnabled(False)
+
+        def ok(r):
+            self.load_btn.setEnabled(True)
+            new_nodes = r.get("timeline") or []
+            if not new_nodes and not self._cs_nodes:
+                self._empty_full()
+                return
+            self._cs_nodes.extend(new_nodes)
+            if r.get("min_rev") is not None:
+                self._cs_min_rev = r["min_rev"]
+            self._cs_has_more = bool(r.get("has_more"))
+            self._render_changeset()
+
+        def err(msg):
+            self.load_btn.setEnabled(True)
+            self.error.emit(msg)
+
+        run_async(services.get_full_history, ok, err, self.state, before_rev)
+
+    def _cs_summary(self) -> dict:
+        tl = self._cs_nodes
+        times = sorted(n["timestamp"] for n in tl if n.get("timestamp"))
+        records = {rec["identifier"] for n in tl for rec in n.get("records", [])}
+        return {
+            "table": (self.state.context or {}).get("table"),
+            "revisions": len(tl),
+            "records": len(records),
+            "total_changes": sum(n.get("change_count", 0) for n in tl),
+            "first_ts": times[0] if times else None,
+            "last_ts": times[-1] if times else None,
+            "has_more": self._cs_has_more,
+        }
+
+    def _render_changeset(self) -> None:
+        clear_layout(self.result_layout)
+        self._cards = []
+        self._selected = -1
+        tl = self._cs_nodes
+        self.result_layout.addSpacing(20)
+        self.result_layout.addWidget(changeset_summary_bar(self._cs_summary()))
+        self.result_layout.addSpacing(22)
+        name_w = name_column_width(
+            [c["label"] for n in tl for rec in n.get("records", []) for c in rec["changes"]]
+        )
+        holder = QWidget()
+        hv = QVBoxLayout(holder)
+        hv.setContentsMargins(2, 0, 0, 0)
+        hv.setSpacing(0)
+        for i, node in enumerate(tl):
+            last = i == len(tl) - 1 and not self._cs_has_more
+            wrap, cardw = timeline_node(node, first=(i == 0), last=last, name_width=name_w)
+            self._cards.append(cardw)
+            cardw.activated.connect(self._on_card_activated)
+            cardw.navigate.connect(self._on_navigate)
+            hv.addWidget(wrap)
+        self.result_layout.addWidget(holder)
+        if self._cs_has_more:
+            more = button("이전 리비전 더 보기", "ghost")
+            more.setMaximumWidth(220)
+            more.clicked.connect(lambda: self._load_full(self._cs_min_rev))
+            row = QHBoxLayout()
+            row.addStretch(1)
+            row.addWidget(more)
+            row.addStretch(1)
+            self.result_layout.addSpacing(8)
+            self.result_layout.addLayout(row)
+        self.result_layout.addStretch(1)
+
+    def _empty_full(self) -> None:
+        table = (self.state.context or {}).get("table")
+        self._center_message("📭", f"'{table}' 에 기록된 변경 이력이 없습니다.",
+                             "이 테이블에는 아직 감사 이력이 없습니다.")
 
     def _render(self, r: dict) -> None:
         clear_layout(self.result_layout)

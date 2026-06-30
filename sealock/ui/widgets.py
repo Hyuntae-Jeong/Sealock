@@ -576,6 +576,28 @@ class TimelineCard(QFrame):
         bv = QVBoxLayout(body)
         bv.setContentsMargins(14, 4, 14, 8)
         bv.setSpacing(0)
+        if node.get("records") is not None:
+            # All-records view: one revision touched several records — show each
+            # under its identifier heading.
+            recs = node["records"]
+            for ri, rec in enumerate(recs):
+                ident = QLabel(rec["identifier"])
+                ident.setObjectName("recIdent")
+                ident.setTextInteractionFlags(Qt.TextSelectableByMouse)
+                bv.addWidget(ident)
+                self._fill_changes(bv, rec, name_width)
+                if ri < len(recs) - 1:
+                    sep = QFrame()
+                    sep.setObjectName("recSep")
+                    bv.addWidget(sep)
+        else:
+            self._fill_changes(bv, node, name_width)
+        self._body = body
+        cv.addWidget(body)
+
+    @staticmethod
+    def _fill_changes(bv, node: dict, name_width: int) -> None:
+        """Render one record's change rows (or its deleted / no-change note)."""
         if node["kind"] == "delete":
             note = QLabel("🗑  이 시점에 레코드가 삭제되었습니다.")
             note.setObjectName("delNote")
@@ -590,8 +612,6 @@ class TimelineCard(QFrame):
                 if i < len(node["changes"]) - 1:
                     r.setStyleSheet("border-bottom: 1px dashed #e9ecf4;")
                 bv.addWidget(r)
-        self._body = body
-        cv.addWidget(body)
 
     def set_selected(self, on: bool) -> None:
         self.setProperty("selected", bool(on))
@@ -683,6 +703,42 @@ def summary_bar(summary: dict, identifier: dict) -> QFrame:
         vv = QLabel(v)
         vv.setObjectName("sumV")
         if k in ("식별자", "기간"):
+            vv.setStyleSheet("font-size: 13px;")
+        col.addWidget(kk)
+        col.addWidget(vv)
+        h.addLayout(col)
+    h.addStretch(1)
+    return bar
+
+
+def changeset_summary_bar(summary: dict) -> QFrame:
+    """Summary bar for the all-records (id-less) revision timeline."""
+    bar = QFrame()
+    bar.setObjectName("summaryBar")
+    h = QHBoxLayout(bar)
+    h.setContentsMargins(18, 13, 18, 13)
+    h.setSpacing(26)
+    rng = "—"
+    if summary.get("first_ts") and summary.get("last_ts"):
+        rng = f"{summary['first_ts'].split(' ')[0]} ~ {summary['last_ts'].split(' ')[0]}"
+    rev_text = str(summary.get("revisions", 0))
+    if summary.get("has_more"):
+        rev_text += "+"
+    items = [
+        ("대상", "테이블 전체"),
+        ("리비전", rev_text),
+        ("레코드", str(summary.get("records", 0))),
+        ("변경 항목", str(summary.get("total_changes", 0))),
+        ("기간", rng),
+    ]
+    for k, v in items:
+        col = QVBoxLayout()
+        col.setSpacing(2)
+        kk = QLabel(k)
+        kk.setObjectName("sumK")
+        vv = QLabel(v)
+        vv.setObjectName("sumV")
+        if k in ("대상", "기간"):
             vv.setStyleSheet("font-size: 13px;")
         col.addWidget(kk)
         col.addWidget(vv)
