@@ -456,6 +456,10 @@ class HistoryPage(QWidget):
         self.desc = _desc("식별자 값을 입력하면 시간순 변경 이력을 보여줍니다.")
         head_box.addWidget(self.desc)
         head_row.addLayout(head_box, 1)
+        self.refresh_btn = button("↻  새로고침", "ghost")
+        self.refresh_btn.setMaximumHeight(34)
+        head_row.addWidget(self.refresh_btn, 0, Qt.AlignTop)
+        head_row.addSpacing(10)
         self.back_btn = button("←  테이블 변경", "ghost")
         self.back_btn.setMaximumHeight(34)
         head_row.addWidget(self.back_btn, 0, Qt.AlignTop)
@@ -522,6 +526,7 @@ class HistoryPage(QWidget):
 
         self.load_btn.clicked.connect(self._load)
         self.id_edit.returnPressed.connect(self._load)
+        self.refresh_btn.clicked.connect(self._refresh)
         self.back_btn.clicked.connect(self.back.emit)
         # Deselect the focused card when clicking anywhere outside the cards.
         QApplication.instance().installEventFilter(self)
@@ -557,6 +562,17 @@ class HistoryPage(QWidget):
             self.id_edit.setFocus()
         else:
             self.desc.setText(f"'{table}' 테이블의 전체 변경 이력을 리비전 최신순으로 보여줍니다.")
+            self._cs_nodes, self._cs_min_rev, self._cs_has_more = [], None, False
+            self._load_full()
+
+    def _refresh(self) -> None:
+        # 현재 모드 그대로 다시 조회한다. 검색 모드는 입력된 ID를 다시 불러오고
+        # (아직 입력 전이면 안내 화면 유지), 전체 이력은 누적분을 비우고 최신
+        # 리비전부터 처음 페이지를 다시 로드한다.
+        if self._mode == "search":
+            if self.id_edit.text().strip():
+                self._load()
+        else:
             self._cs_nodes, self._cs_min_rev, self._cs_has_more = [], None, False
             self._load_full()
 
