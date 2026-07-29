@@ -113,9 +113,30 @@ def field(label: str, placeholder: str = "", echo: bool = False) -> tuple[QWidge
     return wrap, edit
 
 
+class _DateEdit(QDateEdit):
+    """QDateEdit that draws its own drop-down arrow.
+
+    The QSS strips the native button (see theme), so the arrow is painted here
+    instead — a plain triangle that reads the palette at paint time and so
+    follows a light/dark swap without rebuilding the widget.
+    """
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        cx, cy = self.width() - 15, self.height() / 2
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(C["text_faint"]))
+        p.drawPolygon(QPolygonF([QPointF(cx - 4.5, cy - 2.2),
+                                 QPointF(cx + 4.5, cy - 2.2),
+                                 QPointF(cx, cy + 3.0)]))
+        p.end()
+
+
 def date_edit(value: QDate | None = None) -> QDateEdit:
     """A YYYY-MM-DD picker with a calendar popup, styled by the app QSS."""
-    de = QDateEdit(value or QDate.currentDate())
+    de = _DateEdit(value or QDate.currentDate())
     de.setCalendarPopup(True)
     de.setDisplayFormat("yyyy-MM-dd")
     de.setDateRange(QDate(1970, 1, 1), QDate(2999, 12, 31))

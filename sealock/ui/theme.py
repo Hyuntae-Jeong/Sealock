@@ -162,8 +162,9 @@ QDateEdit {{ background: {c['surface2']}; border: 2px solid {c['border']}; borde
     selection-background-color: {c['primary']}; selection-color: {c['on_primary']}; }}
 QDateEdit:focus {{ border: 2px solid {c['primary']}; background: {c['surface']}; }}
 QDateEdit:disabled {{ color: {c['text_faint']}; border-color: {c['border']}; }}
-/* ::drop-down is deliberately left unstyled — overriding it drops the calendar
-   arrow entirely, and that arrow is the only hint the popup exists. */
+/* The native drop-down is a raised grey slab that fights the flat field; strip
+   it bare here and let widgets._DateEdit paint the arrow over the same area. */
+QDateEdit::drop-down {{ width: 26px; border: none; background: transparent; }}
 QCalendarWidget QWidget {{ alternate-background-color: {c['surface2']}; }}
 QCalendarWidget QWidget#qt_calendar_navigationbar {{ background: {c['surface2']}; }}
 QCalendarWidget QToolButton {{ background: transparent; color: {c['text']}; border: none;
