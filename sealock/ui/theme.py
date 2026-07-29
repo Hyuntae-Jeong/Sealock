@@ -251,6 +251,21 @@ QLabel#arrow {{ color: {c['text_faint']}; font-size: 15px; font-weight: 700; }}
 QLabel#tag {{ background: {c['primary_soft']}; color: {c['primary_700']}; border-radius: 5px; padding: 2px 7px; font-size: 10px; font-weight: 700; }}
 QLabel#flagChanged {{ background: {c['info_bg']}; color: {c['info_text']}; border: 1px solid {c['info_border']}; border-radius: 7px; padding: 3px 10px; font-size: 12px; font-weight: 600; }}
 QLabel#delNote {{ color: {c['danger_text']}; font-weight: 600; font-size: 13px; }}
+
+/* ── revision snapshot popup (right-click a card) ── */
+QFrame#snapPopup {{ background: {c['surface']}; border: 1px solid {c['border_strong']}; border-radius: 12px; }}
+QFrame#snapHead {{ background: transparent; border: none; border-bottom: 1px solid {c['border']}; }}
+QFrame#snapFoot {{ background: {c['surface2']}; border: none; border-top: 1px solid {c['border']};
+    border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; }}
+QScrollArea#snapScroll {{ background: transparent; }}
+QLabel#snapIdent {{ color: {c['text_soft']}; font-size: 12px; font-family: {MONO}; }}
+QLabel#snapVal {{ background: {c['surface2']}; color: {c['text_soft']}; border: 1px solid {c['border']};
+    border-radius: 7px; padding: 3px 9px; font-size: 12px; font-family: {MONO}; }}
+QLabel#snapHint {{ color: {c['text_faint']}; font-size: 11px; }}
+QPushButton#snapCopy {{ background: {c['surface']}; color: {c['text_soft']}; border: 1px solid {c['border_strong']};
+    border-radius: 8px; min-height: 26px; padding: 0 12px; font-size: 11px; font-weight: 600; }}
+QPushButton#snapCopy:hover {{ background: {c['primary_soft']}; color: {c['primary_700']}; border-color: {c['primary']}; }}
+QPushButton#snapCopy:disabled {{ color: {c['text_faint']}; border-color: {c['border']}; }}
 QLabel#noChange {{ color: {c['text_faint']}; font-size: 12px; font-style: italic; }}
 QLabel#emptyTitle {{ color: {c['text_soft']}; font-size: 14px; }}
 QLabel#emptySub {{ color: {c['text_faint']}; font-size: 12px; }}

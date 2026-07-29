@@ -1,18 +1,19 @@
 """Reusable Qt widgets and helpers: async worker, stepper, timeline pieces."""
 from __future__ import annotations
 
+import json
 import math
 
 from PySide6.QtCore import (Property, QDate, QEasingCurve, QObject, QPoint,
                             QPointF, QPropertyAnimation, QRect, QRectF,
                             QRunnable, QSize, Qt, QThreadPool, QTimer, Signal)
-from PySide6.QtGui import (QColor, QFont, QFontMetrics, QIcon, QLinearGradient,
-                           QPainter, QPainterPath, QPen, QPixmap, QPolygonF,
-                           QRadialGradient)
+from PySide6.QtGui import (QColor, QCursor, QFont, QFontMetrics, QIcon,
+                           QLinearGradient, QPainter, QPainterPath, QPen,
+                           QPixmap, QPolygonF, QRadialGradient)
 from PySide6.QtWidgets import (QApplication, QCalendarWidget, QDateEdit, QFrame,
                                QGraphicsDropShadowEffect, QHBoxLayout, QLabel,
-                               QLayout, QLineEdit, QPushButton, QSizePolicy,
-                               QToolButton, QVBoxLayout, QWidget)
+                               QLayout, QLineEdit, QPushButton, QScrollArea,
+                               QSizePolicy, QToolButton, QVBoxLayout, QWidget)
 
 from ..resources import asset_path
 from .theme import C
@@ -531,7 +532,7 @@ def value_pill(value, variant: str) -> QLabel:
     return lab
 
 
-def name_column_width(labels) -> int:
+def name_column_width(labels, lo: int = 150, hi: int = 400) -> int:
     """Width for the column-name cell: wide enough for the longest name in the
     timeline (so values line up in a column), clamped to a sane range."""
     f = QFont("Consolas")
@@ -539,7 +540,7 @@ def name_column_width(labels) -> int:
     f.setWeight(QFont.Weight.DemiBold)
     fm = QFontMetrics(f)
     widest = max((fm.horizontalAdvance(str(x)) for x in labels), default=0)
-    return max(150, min(widest + 10, 400))
+    return max(lo, min(widest + 10, hi))
 
 
 def _change_row(change: dict, name_width: int = 150) -> QWidget:
@@ -579,18 +580,196 @@ def _change_row(change: dict, name_width: int = 150) -> QWidget:
     return row
 
 
+def _snap_value(value, changed: bool) -> QLabel:
+    """One snapshot value: green when this revision set it, neutral otherwise."""
+    if value is None:
+        lab = QLabel("∅ null")
+        lab.setObjectName("valNull")
+    else:
+        lab = _CopyableLabel(str(value))
+        lab.setObjectName("valNew" if changed else "snapVal")
+    lab.setWordWrap(True)
+    lab.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred)
+    return lab
+
+
+class SnapshotPopup(QWidget):
+    """Every column's value as of one revision, opened by right-clicking a card.
+
+    The timeline only shows what changed; this is the "what did the whole row
+    look like at that moment" view, read straight off the running snapshot the
+    diff builder already keeps.
+    """
+
+    MAX_BODY_HEIGHT = 380
+
+    def __init__(self, node: dict, record: dict, subject: str | None = None,
+                 parent: QWidget | None = None):
+        # Parented on purpose: a Qt.Popup is its own window, but without an
+        # owner the wrapper is collected the moment the caller returns and the
+        # popup vanishes before it is ever seen.
+        super().__init__(parent, Qt.Popup)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WA_DeleteOnClose)
+        self._snapshot = record.get("snapshot") or {}
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(14, 12, 14, 16)        # room for the shadow
+        card = QFrame()
+        card.setObjectName("snapPopup")
+        soft_shadow(card, blur=34, dy=8, alpha=46)
+        outer.addWidget(card)
+        cv = QVBoxLayout(card)
+        cv.setContentsMargins(0, 0, 0, 0)
+        cv.setSpacing(0)
+
+        cv.addWidget(self._head(node, record, subject))
+        cv.addWidget(self._body(record))
+        cv.addWidget(self._foot())
+        self.setFixedWidth(500)
+
+    # ── sections ────────────────────────────────────────────────────────
+    @staticmethod
+    def _head(node: dict, record: dict, subject: str | None) -> QFrame:
+        head = QFrame()
+        head.setObjectName("snapHead")
+        v = QVBoxLayout(head)
+        v.setContentsMargins(16, 13, 16, 12)
+        v.setSpacing(7)
+        row = QHBoxLayout()
+        row.setSpacing(9)
+        rev = QLabel(f"REV {node['rev']}")
+        rev.setObjectName("revChip")
+        kind = record.get("kind", node.get("kind", "update"))
+        chip = QLabel(_KIND_KO.get(kind, ""))
+        chip.setObjectName({"create": "typeCreate", "update": "typeUpdate",
+                            "delete": "typeDelete"}[kind])
+        when = QLabel(node.get("timestamp") or "")
+        when.setObjectName("tlTime")
+        row.addWidget(rev)
+        row.addWidget(chip)
+        row.addStretch(1)
+        row.addWidget(when)
+        v.addLayout(row)
+        label = record.get("identifier") or subject
+        if label:
+            ident = QLabel(label)
+            ident.setObjectName("snapIdent")
+            ident.setWordWrap(True)
+            ident.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            v.addWidget(ident)
+        if kind == "delete":
+            note = QLabel("🗑  이 리비전에서 삭제됨 — 삭제 직전 값입니다.")
+            note.setObjectName("delNote")
+            v.addWidget(note)
+        return head
+
+    def _body(self, record: dict) -> QWidget:
+        changed = {c["column"] for c in record.get("changes", []) if c["kind"] != "flag"}
+        holder = QWidget()
+        v = QVBoxLayout(holder)
+        v.setContentsMargins(16, 4, 16, 10)
+        v.setSpacing(0)
+        if not self._snapshot:
+            none = QLabel("이 시점의 값을 알 수 없습니다. 조회 범위 밖에서 만들어진 레코드입니다.")
+            none.setObjectName("noChange")
+            none.setWordWrap(True)
+            v.addWidget(none)
+        else:
+            width = name_column_width(self._snapshot, lo=90, hi=200)
+            items = list(self._snapshot.items())
+            for i, (col, value) in enumerate(items):
+                v.addWidget(self._row(col, value, col in changed, width,
+                                      last=i == len(items) - 1))
+
+        scroll = QScrollArea()
+        scroll.setObjectName("snapScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(holder)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setMaximumHeight(self.MAX_BODY_HEIGHT)
+        # Short snapshots should not leave dead space below the last row.
+        holder.adjustSize()
+        scroll.setMinimumHeight(min(holder.sizeHint().height(), self.MAX_BODY_HEIGHT))
+        return scroll
+
+    @staticmethod
+    def _row(col: str, value, changed: bool, name_width: int, last: bool) -> QWidget:
+        row = QWidget()
+        h = QHBoxLayout(row)
+        h.setContentsMargins(0, 7, 0, 7)
+        h.setSpacing(10)
+        name = QLabel(col)
+        name.setObjectName("colName")
+        name.setFixedWidth(name_width)
+        name.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        h.addWidget(name, 0, Qt.AlignTop)
+        h.addWidget(_snap_value(value, changed), 0, Qt.AlignTop)
+        h.addStretch(1)
+        if changed:
+            tag = QLabel("이번 변경")
+            tag.setObjectName("tag")
+            h.addWidget(tag, 0, Qt.AlignTop)
+        if not last:
+            row.setStyleSheet(f"border-bottom: 1px dashed {C['border']};")
+        return row
+
+    def _foot(self) -> QFrame:
+        foot = QFrame()
+        foot.setObjectName("snapFoot")
+        h = QHBoxLayout(foot)
+        h.setContentsMargins(16, 9, 12, 9)
+        h.setSpacing(10)
+        hint = QLabel("이 리비전 시점의 전체 값 · 값을 클릭하면 복사"
+                      if self._snapshot else "표시할 값이 없습니다.")
+        hint.setObjectName("snapHint")
+        h.addWidget(hint)
+        h.addStretch(1)
+        copy = QPushButton("전체 복사")
+        copy.setObjectName("snapCopy")
+        copy.setCursor(Qt.PointingHandCursor)
+        copy.clicked.connect(self._copy_all)
+        copy.setEnabled(bool(self._snapshot))
+        h.addWidget(copy)
+        return foot
+
+    def _copy_all(self) -> None:
+        copy_value(json.dumps(self._snapshot, ensure_ascii=False, indent=2),
+                   QCursor.pos())
+
+    # ── placement ───────────────────────────────────────────────────────
+    def pop_at(self, global_pos: QPoint) -> None:
+        """Show near the cursor, nudged back inside the screen when it would
+        overflow (long snapshots near the bottom edge are the common case)."""
+        self.adjustSize()
+        screen = QApplication.screenAt(global_pos) or QApplication.primaryScreen()
+        area = screen.availableGeometry()
+        x = min(global_pos.x() - 12, area.right() - self.width())
+        y = min(global_pos.y() - 10, area.bottom() - self.height())
+        self.move(max(area.left(), x), max(area.top(), y))
+        self.show()
+
+
 class TimelineCard(QFrame):
-    """One revision card. Click to select (focus mode); Up/Down navigate revs."""
+    """One revision card. Click to select (focus mode); Up/Down navigate revs.
+
+    Right-click opens a SnapshotPopup for the record under the cursor.
+    """
 
     activated = Signal(object)   # emits self when clicked
     navigate = Signal(int)       # emits -1 (up) / +1 (down) on arrow keys
 
-    def __init__(self, node: dict, name_width: int = 150):
+    def __init__(self, node: dict, name_width: int = 150, subject: str | None = None):
         super().__init__()
         self.setObjectName("tlCard")
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         self.setFocusPolicy(Qt.StrongFocus)
+        self.setToolTip("오른쪽 클릭 — 이 리비전 시점의 전체 값 보기")
         self._collapsed = False
+        self._node = node
+        self._subject = subject
+        self._zones: list[tuple[QWidget, dict]] = []   # record widget -> record
         cv = QVBoxLayout(self)
         cv.setContentsMargins(0, 0, 0, 0)
         cv.setSpacing(0)
@@ -623,18 +802,25 @@ class TimelineCard(QFrame):
         bv.setSpacing(0)
         if node.get("records") is not None:
             # All-records view: one revision touched several records — show each
-            # under its identifier heading.
+            # under its identifier heading, in its own widget so a right-click
+            # can be traced back to the record it landed on.
             recs = node["records"]
             for ri, rec in enumerate(recs):
+                block = QWidget()
+                bl = QVBoxLayout(block)
+                bl.setContentsMargins(0, 0, 0, 0)
+                bl.setSpacing(0)
                 ident = QLabel(rec["identifier"])
                 ident.setObjectName("recIdent")
                 ident.setTextInteractionFlags(Qt.TextSelectableByMouse)
-                bv.addWidget(ident)
-                self._fill_changes(bv, rec, name_width)
+                bl.addWidget(ident)
+                self._fill_changes(bl, rec, name_width)
                 if ri < len(recs) - 1:
                     sep = QFrame()
                     sep.setObjectName("recSep")
-                    bv.addWidget(sep)
+                    bl.addWidget(sep)
+                bv.addWidget(block)
+                self._zones.append((block, rec))
         else:
             self._fill_changes(bv, node, name_width)
         self._body = body
@@ -665,6 +851,27 @@ class TimelineCard(QFrame):
     def mousePressEvent(self, e):
         self.activated.emit(self)
         super().mousePressEvent(e)
+
+    def contextMenuEvent(self, e):
+        self.activated.emit(self)
+        popup = SnapshotPopup(self._node, self._record_at(e.pos()), self._subject, self)
+        popup.pop_at(e.globalPos())
+        e.accept()
+
+    def _record_at(self, pos) -> dict:
+        """The record whose block the click landed in.
+
+        Single-record cards (식별자 검색) carry the snapshot on the node itself;
+        for a revision that touched several records, the cursor picks one — a
+        click in the header or between blocks falls back to the first.
+        """
+        if not self._zones:
+            return self._node
+        for widget, rec in self._zones:
+            top = widget.mapTo(self, QPoint(0, 0)).y()
+            if top <= pos.y() < top + widget.height():
+                return rec
+        return self._zones[0][1]
 
     def keyPressEvent(self, e):
         if e.key() == Qt.Key_Up:
@@ -701,8 +908,13 @@ class TimelineCard(QFrame):
         e.accept()
 
 
-def timeline_node(node: dict, first: bool, last: bool, name_width: int = 150):
-    """Return (wrap, card): the rail+card row, and the selectable TimelineCard."""
+def timeline_node(node: dict, first: bool, last: bool, name_width: int = 150,
+                  subject: str | None = None):
+    """Return (wrap, card): the rail+card row, and the selectable TimelineCard.
+
+    ``subject`` names the record for the snapshot popup — only the single-record
+    timeline needs it; all-records nodes carry an identifier per record.
+    """
     wrap = QWidget()
     outer = QHBoxLayout(wrap)
     outer.setContentsMargins(0, 0, 0, 0)
@@ -716,7 +928,7 @@ def timeline_node(node: dict, first: bool, last: bool, name_width: int = 150):
     rv = QVBoxLayout(right)
     rv.setContentsMargins(0, 0, 0, 0)
     rv.setSpacing(0)
-    card = TimelineCard(node, name_width)
+    card = TimelineCard(node, name_width, subject)
     rail.clicked.connect(card._on_rail_clicked)
     rv.addWidget(card)
     if not last:

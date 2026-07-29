@@ -12,11 +12,13 @@ from datetime import date
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from PySide6.QtCore import QDate  # noqa: E402
+from PySide6.QtCore import QDate, QPoint  # noqa: E402
+from PySide6.QtGui import QContextMenuEvent  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from sealock import demo, services  # noqa: E402
 from sealock.ui.theme import QSS  # noqa: E402
+from sealock.ui.widgets import SnapshotPopup  # noqa: E402
 from sealock.ui.window import MainWindow  # noqa: E402
 
 
@@ -38,6 +40,17 @@ def main() -> int:
     win.goto(2)
     win.page_hist.on_enter()
     win.page_hist._render(services.get_history(st, "42"))
+
+    # 우클릭 스냅샷 팝업: 수정 / 삭제 리비전 각각 렌더된다.
+    for card in (win.page_hist._cards[2], win.page_hist._cards[-1]):
+        pos = QPoint(120, 40)
+        card.contextMenuEvent(
+            QContextMenuEvent(QContextMenuEvent.Mouse, pos, card.mapToGlobal(pos)))
+        app.processEvents()
+    for w in app.topLevelWidgets():
+        if isinstance(w, SnapshotPopup):
+            w.close()
+
     win.page_hist._empty({"column": "id", "value": "999"})
     win.page_hist._placeholder()
 
@@ -73,7 +86,24 @@ def main() -> int:
     ph._empty_full()                    # empty state names the applied period
     app.processEvents()
 
-    print("[smoke] OK - MainWindow built; search + full-history + date-range views rendered.")
+    # 여러 레코드가 든 리비전 카드 — 커서가 놓인 레코드의 스냅샷을 고른다.
+    ph._cs_nodes = list(r["timeline"])
+    ph._render_changeset()
+    app.processEvents()                 # let the layout settle before hit-testing
+    card = ph._cards[-1]
+    zones = card._zones
+    assert len(zones) == 3, f"expected 3 record blocks, got {len(zones)}"
+    y = zones[1][0].mapTo(card, QPoint(0, 0)).y() + 8
+    assert card._record_at(QPoint(120, y)) is zones[1][1]
+    card.contextMenuEvent(QContextMenuEvent(
+        QContextMenuEvent.Mouse, QPoint(120, y), card.mapToGlobal(QPoint(120, y))))
+    app.processEvents()
+    for w in app.topLevelWidgets():
+        if isinstance(w, SnapshotPopup):
+            w.close()
+    app.processEvents()
+
+    print("[smoke] OK - MainWindow built; search + full-history + date-range + snapshot popup rendered.")
     return 0
 
 

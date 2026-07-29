@@ -252,6 +252,9 @@ def build_changeset_timeline(
                 "kind": meta["kind"],
                 "deleted": rtype == 2,
                 "changes": changes,
+                # Copy of this record's running state — the every-column view
+                # the UI shows on demand, not just the columns that changed.
+                "snapshot": {k: _display(v) for k, v in state.items()},
             }
         )
 

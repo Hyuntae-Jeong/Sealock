@@ -237,6 +237,26 @@ def test_changeset_create_shows_full_snapshot():
     assert rec["changes"][0]["kind"] == "create"
 
 
+def test_changeset_record_carries_full_snapshot():
+    # The right-click popup reads this: every column at that revision, not just
+    # the ones that changed — and per record, not shared.
+    tl = build_changeset_timeline(CONFIG_ROWS, CONFIG_CLS)
+    rev12 = {r["identifier"]: r for r in tl[0]["records"]}
+    assert rev12["name = enable"]["snapshot"] == {"value": "1"}
+    assert rev12["name = threshold"]["snapshot"] == {"value": "50"}
+    rev10 = {r["identifier"]: r for r in tl[1]["records"]}
+    assert rev10["name = enable"]["snapshot"] == {"value": "0"}   # not overwritten
+
+
+def test_snapshot_of_deleted_record_keeps_last_known_values():
+    rows = CONFIG_ROWS + [{"REV": 14, "REVTYPE": 2, "__revts": 1718755200000,
+                           "name": "enable", "value": None, "value_MOD": 0}]
+    tl = build_changeset_timeline(rows, CONFIG_CLS)
+    rec = tl[0]["records"][0]
+    assert rec["kind"] == "delete" and rec["changes"] == []
+    assert rec["snapshot"] == {"value": "1"}       # value as of just before DEL
+
+
 def test_changeset_baseline_seeds_old_value_at_window_edge():
     # Only rev 12 is in-window; baseline carries the pre-window value of `enable`.
     window = [r for r in CONFIG_ROWS if r["REV"] == 12 and r["name"] == "enable"]

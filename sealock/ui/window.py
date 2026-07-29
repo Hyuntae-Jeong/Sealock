@@ -878,12 +878,14 @@ class HistoryPage(QWidget):
         # Align value pills into a column: size every name cell to the widest
         # column name across the whole timeline.
         name_w = name_column_width([c["label"] for n in tl for c in n["changes"]])
+        subject = f"{r['identifier']['column']} = {r['identifier']['value']}"
         holder = QWidget()
         hv = QVBoxLayout(holder)
         hv.setContentsMargins(2, 0, 0, 0)
         hv.setSpacing(0)
         for i, node in enumerate(tl):
-            wrap, cardw = timeline_node(node, first=(i == 0), last=(i == len(tl) - 1), name_width=name_w)
+            wrap, cardw = timeline_node(node, first=(i == 0), last=(i == len(tl) - 1),
+                                        name_width=name_w, subject=subject)
             self._cards.append(cardw)
             cardw.activated.connect(self._on_card_activated)
             cardw.navigate.connect(self._on_navigate)
