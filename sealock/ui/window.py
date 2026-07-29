@@ -1,8 +1,8 @@
 """Main window and the three wizard pages (connection / table / history)."""
 from __future__ import annotations
 
-from PySide6.QtCore import (QEasingCurve, QEvent, QPoint, QPropertyAnimation,
-                            Qt, QTimer, Signal)
+from PySide6.QtCore import (QDate, QEasingCurve, QEvent, QPoint,
+                            QPropertyAnimation, Qt, QTimer, Signal)
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (QApplication, QComboBox, QFrame,
                                QGraphicsOpacityEffect, QGridLayout,
@@ -15,9 +15,9 @@ from ..resources import app_icon
 from ..services import AppState
 from . import theme
 from .widgets import (BrandMark, FlowLayout, Stepper, TimelineCard, button,
-                      changeset_summary_bar, clear_layout, field, meta_badge,
-                      name_column_width, repolish, run_async, soft_shadow,
-                      summary_bar, timeline_node)
+                      changeset_summary_bar, clear_layout, date_edit, field,
+                      meta_badge, name_column_width, repolish, run_async,
+                      soft_shadow, summary_bar, timeline_node)
 
 
 def _title(text: str) -> QLabel:
@@ -431,6 +431,10 @@ class HistoryPage(QWidget):
     back = Signal()
     error = Signal(str)
 
+    # Quick period picks for the full-history mode; None = 전체 기간 (no filter).
+    PRESETS = (("all", "전체", None), ("7d", "7일", 7), ("30d", "30일", 30),
+               ("90d", "3개월", 90), ("365d", "1년", 365))
+
     def __init__(self, state: AppState):
         super().__init__()
         self.state = state
@@ -440,6 +444,10 @@ class HistoryPage(QWidget):
         self._cs_nodes: list[dict] = []  # accumulated changeset nodes (paged)
         self._cs_min_rev = None
         self._cs_has_more = False
+        self._preset = "all"            # picked period, or "custom" once dates are edited
+        self._applied = None            # (from, to) of the loaded timeline; None = 전체
+        self._loaded = False            # timeline loaded, vs. showing the pre-load tally
+        self._count_seq = 0             # drops tallies that land after a newer pick
 
         card = QFrame()
         card.setObjectName("card")
@@ -488,6 +496,8 @@ class HistoryPage(QWidget):
         self.search_tab.clicked.connect(lambda: self._set_mode("search"))
         self.full_tab.clicked.connect(lambda: self._set_mode("full"))
 
+        cv.addWidget(self._build_range_bar())
+
         self.input_row = QWidget()
         inp = QHBoxLayout(self.input_row)
         inp.setContentsMargins(0, 0, 0, 0)
@@ -531,6 +541,67 @@ class HistoryPage(QWidget):
         # Deselect the focused card when clicking anywhere outside the cards.
         QApplication.instance().installEventFilter(self)
 
+    # ── period filter (full-history mode) ───────────────────────────────
+    def _build_range_bar(self) -> QFrame:
+        """기간 picker: quick presets on the left, explicit dates on the right,
+        and a one-line tally of what the current pick would load."""
+        self.range_row = QFrame()
+        self.range_row.setObjectName("filterBar")
+        outer = QVBoxLayout(self.range_row)
+        outer.setContentsMargins(14, 11, 14, 11)
+        outer.setSpacing(8)
+
+        row = QHBoxLayout()
+        row.setSpacing(10)
+        cap = QLabel("기간")
+        cap.setObjectName("fieldLabel")
+        row.addWidget(cap)
+
+        seg = QFrame()
+        seg.setObjectName("segToggle")
+        sh = QHBoxLayout(seg)
+        sh.setContentsMargins(3, 3, 3, 3)
+        sh.setSpacing(3)
+        self.preset_btns: dict[str, QPushButton] = {}
+        for key, label, _days in self.PRESETS:
+            b = QPushButton(label)
+            b.setObjectName("segBtn")
+            b.setCheckable(True)
+            b.setCursor(Qt.PointingHandCursor)
+            b.clicked.connect(lambda _=False, k=key: self._pick_preset(k))
+            self.preset_btns[key] = b
+            sh.addWidget(b)
+        row.addWidget(seg)
+        row.addStretch(1)
+
+        self.from_date = date_edit(QDate.currentDate().addDays(-29))
+        self.to_date = date_edit()
+        tilde = QLabel("~")
+        tilde.setObjectName("rangeTilde")
+        row.addWidget(self.from_date)
+        row.addWidget(tilde)
+        row.addWidget(self.to_date)
+        self.apply_btn = button("적용", "primary")
+        row.addSpacing(2)
+        row.addWidget(self.apply_btn)
+        outer.addLayout(row)
+
+        self.range_hint = QLabel("")
+        self.range_hint.setObjectName("rangeHint")
+        self.range_hint.setWordWrap(True)
+        outer.addWidget(self.range_hint)
+        self.range_row.hide()           # full-history mode only
+
+        # Spinning a date fires per keystroke — settle first, then re-tally.
+        self._count_timer = QTimer(self)
+        self._count_timer.setSingleShot(True)
+        self._count_timer.setInterval(300)
+        self._count_timer.timeout.connect(self._refresh_count)
+        for de in (self.from_date, self.to_date):
+            de.dateChanged.connect(self._on_date_edited)
+        self.apply_btn.clicked.connect(self._apply_range)
+        return self.range_row
+
     def on_enter(self) -> None:
         ctx = self.state.context or {}
         ident = ctx.get("identifier_column", "ID")
@@ -553,6 +624,7 @@ class HistoryPage(QWidget):
             tab.setProperty("active", on)
             repolish(tab)
         self.input_row.setVisible(is_search)
+        self.range_row.setVisible(not is_search)
         ctx = self.state.context or {}
         table = ctx.get("table")
         if is_search:
@@ -562,17 +634,127 @@ class HistoryPage(QWidget):
             self.id_edit.setFocus()
         else:
             self.desc.setText(f"'{table}' 테이블의 전체 변경 이력을 리비전 최신순으로 보여줍니다.")
-            self._cs_nodes, self._cs_min_rev, self._cs_has_more = [], None, False
-            self._load_full()
+            self._reset_range()
+
+    def _reset_range(self) -> None:
+        """Enter full-history mode on 전체 기간 — tally first, load only on 적용."""
+        self._cs_nodes, self._cs_min_rev, self._cs_has_more = [], None, False
+        self._applied, self._loaded = None, False
+        today = QDate.currentDate()
+        self._set_dates(today.addDays(-29), today)
+        # Without a REVINFO timestamp there is nothing to compare a date to, so
+        # only 전체 기간 remains selectable.
+        datable = services.supports_date_range(self.state)
+        for key, btn in self.preset_btns.items():
+            btn.setEnabled(datable or key == "all")
+        self.from_date.setEnabled(datable)
+        self.to_date.setEnabled(datable)
+        self._pick_preset("all")
+
+    def _set_dates(self, start: QDate, end: QDate) -> None:
+        """Set both pickers without tripping the "직접 선택" switch."""
+        for de, d in ((self.from_date, start), (self.to_date, end)):
+            de.blockSignals(True)
+            de.setDate(d)
+            de.blockSignals(False)
+
+    def _pick_preset(self, key: str) -> None:
+        self._preset = key
+        days = next((d for k, _label, d in self.PRESETS if k == key), None)
+        if days:
+            end = QDate.currentDate()
+            self._set_dates(end.addDays(-(days - 1)), end)
+        self._sync_presets()
+        self._refresh_count()
+
+    def _sync_presets(self) -> None:
+        for key, btn in self.preset_btns.items():
+            on = key == self._preset
+            btn.setChecked(on)
+            btn.setProperty("active", on)
+            repolish(btn)
+
+    def _on_date_edited(self) -> None:
+        if self._preset != "custom":
+            self._preset = "custom"
+            self._sync_presets()
+        self._count_timer.start()
+
+    def _range_args(self) -> tuple:
+        """The picked period as (from, to) dates — (None, None) means 전체."""
+        if self._preset == "all" or not services.supports_date_range(self.state):
+            return None, None
+        return self.from_date.date().toPython(), self.to_date.date().toPython()
+
+    def _refresh_count(self) -> None:
+        """Tally the picked period without loading it (the pre-적용 preview)."""
+        self._count_timer.stop()
+        self._count_seq += 1
+        seq = self._count_seq
+        self.range_hint.setText("집계 중…")
+
+        def ok(c):
+            if seq == self._count_seq:
+                self._show_count(c)
+
+        def err(msg):
+            if seq == self._count_seq:
+                self.range_hint.setText("")
+                self.error.emit(msg)
+
+        run_async(services.count_full_history, ok, err, self.state, *self._range_args())
+
+    def _show_count(self, count: dict) -> None:
+        revs, rows = count.get("revisions", 0), count.get("rows", 0)
+        tally = f"리비전 {revs:,}개 · 변경 행 {rows:,}건"
+        if not services.supports_date_range(self.state):
+            self.range_hint.setText(f"{tally} · 리비전 시각(REVINFO)이 없어 기간을 지정할 수 없습니다.")
+        else:
+            self.range_hint.setText(
+                f"{self._scope_label()} · {tally}{self._span_text(count, ' · ', '')}")
+        if not self._loaded:
+            self._preview_count(count, tally)
+
+    def _scope_label(self) -> str:
+        """Name the picked period — the presets deselect once dates are edited,
+        so the hint is what tells 직접 선택 apart from 전체 기간."""
+        if self._preset == "custom":
+            return "직접 선택"
+        label = next((lb for k, lb, _d in self.PRESETS if k == self._preset), "전체")
+        return "전체 기간" if self._preset == "all" else f"최근 {label}"
+
+    @staticmethod
+    def _span_text(count: dict, prefix: str = "", suffix: str = "") -> str:
+        first, last = count.get("first_ts"), count.get("last_ts")
+        return f"{prefix}{first[:10]} ~ {last[:10]}{suffix}" if first and last else ""
+
+    def _preview_count(self, count: dict, tally: str) -> None:
+        """Landing view of the full-history mode: how much '적용' would load."""
+        if not count.get("revisions"):
+            self._center_message("📭", "선택한 기간에 기록된 변경 이력이 없습니다.",
+                                 "기간을 넓혀서 다시 확인해 보세요.")
+            return
+        self._center_message(
+            "📊", tally,
+            f"{self._span_text(count, '', ' · ')}'적용'을 누르면 최신 리비전부터 "
+            f"{services.FULL_HISTORY_PAGE}개씩 불러옵니다.",
+        )
+
+    def _apply_range(self) -> None:
+        self._applied = self._range_args()
+        self._cs_nodes, self._cs_min_rev, self._cs_has_more = [], None, False
+        self._load_full()
 
     def _refresh(self) -> None:
         # 현재 모드 그대로 다시 조회한다. 검색 모드는 입력된 ID를 다시 불러오고
-        # (아직 입력 전이면 안내 화면 유지), 전체 이력은 누적분을 비우고 최신
-        # 리비전부터 처음 페이지를 다시 로드한다.
+        # (아직 입력 전이면 안내 화면 유지), 전체 이력은 집계를 다시 세고 이미
+        # 불러온 이력이 있으면 적용된 기간으로 첫 페이지부터 다시 로드한다.
         if self._mode == "search":
             if self.id_edit.text().strip():
                 self._load()
-        else:
+            return
+        self._refresh_count()
+        if self._loaded:
             self._cs_nodes, self._cs_min_rev, self._cs_has_more = [], None, False
             self._load_full()
 
@@ -599,11 +781,17 @@ class HistoryPage(QWidget):
     # ── full-history (id-less tables): rev-grouped, paged ───────────────
     def _load_full(self, before_rev=None) -> None:
         self.load_btn.setEnabled(False)
+        self.apply_btn.setEnabled(False)
+        # Paging stays inside the period that was applied, not the one currently
+        # picked — otherwise "더 보기" would wander out of the loaded range.
+        d_from, d_to = self._applied or (None, None)
 
         def ok(r):
             self.load_btn.setEnabled(True)
+            self.apply_btn.setEnabled(True)
             new_nodes = r.get("timeline") or []
-            if not new_nodes and not self._cs_nodes:
+            self._loaded = bool(new_nodes or self._cs_nodes)
+            if not self._loaded:
                 self._empty_full()
                 return
             self._cs_nodes.extend(new_nodes)
@@ -614,9 +802,11 @@ class HistoryPage(QWidget):
 
         def err(msg):
             self.load_btn.setEnabled(True)
+            self.apply_btn.setEnabled(True)
             self.error.emit(msg)
 
-        run_async(services.get_full_history, ok, err, self.state, before_rev)
+        run_async(services.get_full_history, ok, err, self.state, before_rev,
+                  services.FULL_HISTORY_PAGE, d_from, d_to)
 
     def _cs_summary(self) -> dict:
         tl = self._cs_nodes
@@ -669,6 +859,11 @@ class HistoryPage(QWidget):
 
     def _empty_full(self) -> None:
         table = (self.state.context or {}).get("table")
+        if self._applied and self._applied[0]:
+            span = f"{self._applied[0].isoformat()} ~ {self._applied[1].isoformat()}"
+            self._center_message("📭", f"{span} 기간에 기록된 변경 이력이 없습니다.",
+                                 "기간을 넓혀서 다시 조회해 보세요.")
+            return
         self._center_message("📭", f"'{table}' 에 기록된 변경 이력이 없습니다.",
                              "이 테이블에는 아직 감사 이력이 없습니다.")
 

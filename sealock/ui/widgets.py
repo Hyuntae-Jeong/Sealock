@@ -3,15 +3,16 @@ from __future__ import annotations
 
 import math
 
-from PySide6.QtCore import (Property, QEasingCurve, QObject, QPoint, QPointF,
-                            QPropertyAnimation, QRect, QRectF, QRunnable, QSize,
-                            Qt, QThreadPool, QTimer, Signal)
-from PySide6.QtGui import (QColor, QFont, QFontMetrics, QLinearGradient,
+from PySide6.QtCore import (Property, QDate, QEasingCurve, QObject, QPoint,
+                            QPointF, QPropertyAnimation, QRect, QRectF,
+                            QRunnable, QSize, Qt, QThreadPool, QTimer, Signal)
+from PySide6.QtGui import (QColor, QFont, QFontMetrics, QIcon, QLinearGradient,
                            QPainter, QPainterPath, QPen, QPixmap, QPolygonF,
                            QRadialGradient)
-from PySide6.QtWidgets import (QApplication, QFrame, QGraphicsDropShadowEffect,
-                               QHBoxLayout, QLabel, QLayout, QLineEdit,
-                               QPushButton, QSizePolicy, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QApplication, QCalendarWidget, QDateEdit, QFrame,
+                               QGraphicsDropShadowEffect, QHBoxLayout, QLabel,
+                               QLayout, QLineEdit, QPushButton, QSizePolicy,
+                               QToolButton, QVBoxLayout, QWidget)
 
 from ..resources import asset_path
 from .theme import C
@@ -110,6 +111,29 @@ def field(label: str, placeholder: str = "", echo: bool = False) -> tuple[QWidge
     v.addWidget(lab)
     v.addWidget(edit)
     return wrap, edit
+
+
+def date_edit(value: QDate | None = None) -> QDateEdit:
+    """A YYYY-MM-DD picker with a calendar popup, styled by the app QSS."""
+    de = QDateEdit(value or QDate.currentDate())
+    de.setCalendarPopup(True)
+    de.setDisplayFormat("yyyy-MM-dd")
+    de.setDateRange(QDate(1970, 1, 1), QDate(2999, 12, 31))
+    de.setFixedWidth(126)
+    de.setCursor(Qt.PointingHandCursor)
+    cal = de.calendarWidget()
+    if cal is not None:
+        cal.setGridVisible(False)
+        cal.setVerticalHeaderFormat(QCalendarWidget.NoVerticalHeader)
+        # The month arrows ship as dark icons that vanish on the dark palette —
+        # swap them for text chevrons that inherit the stylesheet's colour.
+        for name, glyph in (("qt_calendar_prevmonth", "‹"), ("qt_calendar_nextmonth", "›")):
+            btn = cal.findChild(QToolButton, name)
+            if btn is not None:
+                btn.setIcon(QIcon())
+                btn.setText(glyph)
+                btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+    return de
 
 
 def hline_label(text: str, obj: str) -> QLabel:

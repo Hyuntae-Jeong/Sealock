@@ -61,7 +61,7 @@ def _display(v):
     return str(v)
 
 
-def _format_ts(value):
+def format_ts(value):
     """Render a revision timestamp in KST.
 
     Accepts an epoch value (milliseconds or seconds) from a REVINFO bigint, or a
@@ -184,7 +184,7 @@ def build_timeline(rows: list[dict], classification: dict) -> list[dict]:
                 "kind": meta["kind"],
                 "deleted": rtype == 2,
                 "timestamp_ms": ts_ms,
-                "timestamp": _format_ts(ts_ms),
+                "timestamp": format_ts(ts_ms),
                 "changes": changes,
                 "snapshot": {k: _display(v) for k, v in state.items()},
             }
@@ -238,7 +238,7 @@ def build_changeset_timeline(
             node = nodes[rev] = {
                 "rev": rev,
                 "timestamp_ms": ts_ms,
-                "timestamp": _format_ts(ts_ms),
+                "timestamp": format_ts(ts_ms),
                 "records": [],
                 "_kinds": set(),
             }

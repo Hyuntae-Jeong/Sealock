@@ -6,6 +6,7 @@ short-circuits to synthetic data so the whole flow works without a database.
 """
 from __future__ import annotations
 
+import datetime as _dt
 import json
 import os
 
@@ -14,6 +15,7 @@ from .db import Database
 from .history import (
     build_changeset_timeline,
     build_timeline,
+    format_ts,
     summarize,
     summarize_changeset,
 )
@@ -23,6 +25,14 @@ CONFIG_LOCAL = "config.local.json"
 # All-records view: how many of the newest revisions to load per page. Caps the
 # cost on large entity tables; "더 보기" pages further back from there.
 FULL_HISTORY_PAGE = 200
+
+# Revision timestamps are rendered in KST (see history.format_ts), so a picked
+# date means the KST day — the filter bounds are built in the same zone.
+_KST = _dt.timezone(_dt.timedelta(hours=9))
+
+# Open ends of a one-sided date range.
+_DATE_MIN = _dt.date(1970, 1, 1)
+_DATE_MAX = _dt.date(2999, 12, 31)
 
 
 class AppState:
@@ -130,15 +140,119 @@ def _fetch_rows(db: Database, ctx: dict, id_value) -> list[dict]:
 
 
 # ── step 3 (id-less tables): whole-table revision timeline ───────────────
-def get_full_history(state: AppState, before_rev=None, limit_revs: int = FULL_HISTORY_PAGE) -> dict:
+def _as_date(value):
+    """Accept a date / datetime / 'YYYY-MM-DD' string; None means "open end"."""
+    if value is None:
+        return None
+    if isinstance(value, _dt.datetime):
+        return value.date()
+    if isinstance(value, _dt.date):
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return _dt.date.fromisoformat(text[:10])
+    except ValueError as exc:
+        raise ValueError(f"날짜 형식이 올바르지 않습니다: {value} (YYYY-MM-DD)") from exc
+
+
+def _norm_range(date_from, date_to):
+    """Validate a picked range; returns (from, to) dates or None when unbounded."""
+    d_from, d_to = _as_date(date_from), _as_date(date_to)
+    if d_from is None and d_to is None:
+        return None
+    d_from, d_to = d_from or _DATE_MIN, d_to or _DATE_MAX
+    if d_from > d_to:
+        raise ValueError("시작일이 종료일보다 늦습니다.")
+    return d_from, d_to
+
+
+def _epoch_bounds(rng, scale: int) -> tuple[int, int]:
+    """Half-open [start, end) epoch bounds in KST; ``scale`` 1000 = milliseconds."""
+    d_from, d_to = rng
+    start = _dt.datetime.combine(d_from, _dt.time.min, _KST)
+    end = _dt.datetime.combine(d_to + _dt.timedelta(days=1), _dt.time.min, _KST)
+    return int(start.timestamp() * scale), int(end.timestamp() * scale)
+
+
+def _ts_scale(db: Database, ri: dict) -> int:
+    """1000 when a numeric REVINFO timestamp stores milliseconds, else 1.
+
+    Uses the same >= 1e12 rule as history.format_ts so filtering and rendering
+    agree. Probed once per session and cached on the revinfo dict.
+    """
+    if "ts_scale" not in ri:
+        q = introspect.quote_ident
+        row = db.query_one(f"SELECT MAX({q(ri['ts_column'])}) AS m FROM {q(ri['table'])}")
+        try:
+            biggest = int((row or {}).get("m") or 0)
+        except (TypeError, ValueError):
+            biggest = 0
+        ri["ts_scale"] = 1000 if biggest >= 1_000_000_000_000 else 1
+    return ri["ts_scale"]
+
+
+def _sql_bounds(db: Database, ctx: dict, rng):
+    """Range bounds typed to match the REVINFO timestamp column, or None.
+
+    DATETIME/TIMESTAMP columns are stored and displayed as wall-clock, so they
+    compare against naive datetimes; numeric columns compare against epochs.
+    """
+    if rng is None:
+        return None
+    ri = ctx.get("revinfo") or {}
+    if not (ri.get("found") and ri.get("ts_column")):
+        raise ValueError(
+            "리비전 시각(REVINFO) 정보를 찾을 수 없어 기간을 지정할 수 없습니다."
+        )
+    d_from, d_to = rng
+    if any(t in (ri.get("ts_type") or "").lower() for t in ("datetime", "timestamp", "date")):
+        return (
+            _dt.datetime.combine(d_from, _dt.time.min),
+            _dt.datetime.combine(d_to + _dt.timedelta(days=1), _dt.time.min),
+        )
+    return _epoch_bounds(rng, _ts_scale(db, ri))
+
+
+def supports_date_range(state: AppState) -> bool:
+    """Whether the confirmed table can be filtered by date (needs REVINFO time)."""
+    ri = (state.context or {}).get("revinfo") or {}
+    return bool(ri.get("found") and ri.get("ts_column"))
+
+
+def count_full_history(state: AppState, date_from=None, date_to=None) -> dict:
+    """Tally what a full-history load would return, without building it.
+
+    Shown before the first load so a wide table's size is visible up front.
+    """
     ctx = state.context
     if not ctx:
         raise ValueError("먼저 테이블을 확정해 주세요.")
+    rng = _norm_range(date_from, date_to)
 
     if state.demo:
-        data = demo.full_history(before_rev)
+        return demo.full_history_count(_epoch_bounds(rng, 1000) if rng else None)
+    return _count_all_rows(state.db, ctx, _sql_bounds(state.db, ctx, rng))
+
+
+def get_full_history(
+    state: AppState,
+    before_rev=None,
+    limit_revs: int = FULL_HISTORY_PAGE,
+    date_from=None,
+    date_to=None,
+) -> dict:
+    ctx = state.context
+    if not ctx:
+        raise ValueError("먼저 테이블을 확정해 주세요.")
+    rng = _norm_range(date_from, date_to)
+
+    if state.demo:
+        data = demo.full_history(before_rev, _epoch_bounds(rng, 1000) if rng else None)
     else:
-        data = _fetch_all_rows(state.db, ctx, before_rev, limit_revs)
+        bounds = _sql_bounds(state.db, ctx, rng)
+        data = _fetch_all_rows(state.db, ctx, before_rev, limit_revs, bounds)
 
     timeline = build_changeset_timeline(data["rows"], ctx, data.get("baseline"))
     return {
@@ -151,23 +265,72 @@ def get_full_history(state: AppState, before_rev=None, limit_revs: int = FULL_HI
     }
 
 
-def _fetch_all_rows(db: Database, ctx: dict, before_rev, limit_revs: int) -> dict:
+def _count_all_rows(db: Database, ctx: dict, bounds) -> dict:
+    """One aggregate pass over the audit table: revisions, rows and time span."""
+    q = introspect.quote_ident
+    table, rev = ctx["table"], ctx["rev_column"]
+    ri = ctx.get("revinfo") or {}
+
+    span, join, where, params = "", "", "", []
+    if ri.get("found") and ri.get("ts_column"):
+        ts = f"r.{q(ri['ts_column'])}"
+        # Inner join only when filtering — otherwise a revision missing from
+        # REVINFO would silently drop out of the tally.
+        join = (f" {'JOIN' if bounds else 'LEFT JOIN'} {q(ri['table'])} r "
+                f"ON a.{q(rev)} = r.{q(ri['rev_column'])}")
+        span = f", MIN({ts}) AS mn, MAX({ts}) AS mx"
+        if bounds:
+            where = f" WHERE {ts} >= %s AND {ts} < %s"
+            params = list(bounds)
+
+    row = db.query_one(
+        f"SELECT COUNT(*) AS n, COUNT(DISTINCT a.{q(rev)}) AS revs{span} "
+        f"FROM {q(table)} a{join}{where}",
+        params,
+    ) or {}
+    return {
+        "revisions": int(row.get("revs") or 0),
+        "rows": int(row.get("n") or 0),
+        "first_ts": format_ts(row.get("mn")),
+        "last_ts": format_ts(row.get("mx")),
+    }
+
+
+def _fetch_all_rows(db: Database, ctx: dict, before_rev, limit_revs: int, bounds=None) -> dict:
     """Load the newest ``limit_revs`` revisions of the whole table (older than
     ``before_rev`` when paging), plus each record's pre-window baseline so the
-    oldest shown diff still resolves a correct "before" value."""
+    oldest shown diff still resolves a correct "before" value.
+
+    ``bounds`` is a half-open [start, end) pair on the REVINFO timestamp: paging
+    then walks back through that period only. The baseline stays unbounded on
+    purpose — the value a period *starts* from was set before the period began.
+    """
     q = introspect.quote_ident
     table, rev = ctx["table"], ctx["rev_column"]
     idents = ctx.get("identifier_columns") or []
     ri = ctx.get("revinfo") or {}
 
+    # Date filter: join REVINFO so only revisions committed inside the period
+    # are considered — by the window, the rows, and the "더 보기" probe alike.
+    rev_join, ts_cond, ts_params = "", "", []
+    if bounds:
+        ts = f"r.{q(ri['ts_column'])}"
+        ts_cond = f"{ts} >= %s AND {ts} < %s"
+        ts_params = list(bounds)
+        rev_join = f" JOIN {q(ri['table'])} r ON a.{q(rev)} = r.{q(ri['rev_column'])}"
+
     # 1. Window = newest `limit_revs` distinct revisions (below before_rev if paging).
-    where, params = "", []
+    conds, params = [], []
     if before_rev is not None:
-        where = f" WHERE a.{q(rev)} < %s"
+        conds.append(f"a.{q(rev)} < %s")
         params.append(before_rev)
+    if ts_cond:
+        conds.append(ts_cond)
+        params.extend(ts_params)
+    where = f" WHERE {' AND '.join(conds)}" if conds else ""
     params.append(int(limit_revs))
     rev_rows = db.query(
-        f"SELECT DISTINCT a.{q(rev)} AS r FROM {q(table)} a{where} "
+        f"SELECT DISTINCT a.{q(rev)} AS r FROM {q(table)} a{rev_join}{where} "
         f"ORDER BY a.{q(rev)} DESC LIMIT %s",
         params,
     )
@@ -177,16 +340,19 @@ def _fetch_all_rows(db: Database, ctx: dict, before_rev, limit_revs: int) -> dic
     lo, hi = min(window), max(window)
 
     # 2. Every audit row inside the window, ordered for per-record snapshotting.
+    #    The REVINFO join is already there for __revts, so the period condition
+    #    rides along on the same alias.
     select, join = "a.*", ""
     if ri.get("found") and ri.get("ts_column"):
         select += f", r.{q(ri['ts_column'])} AS __revts"
-        join = f" LEFT JOIN {q(ri['table'])} r ON a.{q(rev)} = r.{q(ri['rev_column'])}"
+        join = (f" {'JOIN' if bounds else 'LEFT JOIN'} {q(ri['table'])} r "
+                f"ON a.{q(rev)} = r.{q(ri['rev_column'])}")
     id_order = "".join(f"a.{q(c)}, " for c in idents)
     rows = db.query(
         f"SELECT {select} FROM {q(table)} a{join} "
-        f"WHERE a.{q(rev)} BETWEEN %s AND %s "
+        f"WHERE a.{q(rev)} BETWEEN %s AND %s{f' AND {ts_cond}' if ts_cond else ''} "
         f"ORDER BY {id_order}a.{q(rev)} ASC",
-        [lo, hi],
+        [lo, hi] + ts_params,
     )
 
     # 3. Baseline: each record's last state strictly before the window edge.
@@ -202,5 +368,9 @@ def _fetch_all_rows(db: Database, ctx: dict, before_rev, limit_revs: int) -> dic
             [lo],
         )
 
-    more = db.query_one(f"SELECT 1 AS x FROM {q(table)} WHERE {q(rev)} < %s LIMIT 1", [lo])
+    more = db.query_one(
+        f"SELECT 1 AS x FROM {q(table)} a{rev_join} "
+        f"WHERE a.{q(rev)} < %s{f' AND {ts_cond}' if ts_cond else ''} LIMIT 1",
+        [lo] + ts_params,
+    )
     return {"rows": rows, "baseline": baseline, "min_rev": lo, "has_more": bool(more)}

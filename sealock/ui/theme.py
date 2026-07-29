@@ -156,6 +156,29 @@ QComboBox::drop-down {{ border: none; width: 22px; }}
 QComboBox QAbstractItemView {{ background: {c['surface']}; border: 1px solid {c['border_strong']};
     border-radius: 8px; selection-background-color: {c['primary_soft']}; selection-color: {c['primary_700']}; outline: none; padding: 4px; }}
 
+/* ── date range picker (step 3, full-history mode) ── */
+QDateEdit {{ background: {c['surface2']}; border: 2px solid {c['border']}; border-radius: 10px;
+    padding: 0 4px 0 11px; min-height: 34px; color: {c['text']}; font-size: 13px;
+    selection-background-color: {c['primary']}; selection-color: {c['on_primary']}; }}
+QDateEdit:focus {{ border: 2px solid {c['primary']}; background: {c['surface']}; }}
+QDateEdit:disabled {{ color: {c['text_faint']}; border-color: {c['border']}; }}
+/* ::drop-down is deliberately left unstyled — overriding it drops the calendar
+   arrow entirely, and that arrow is the only hint the popup exists. */
+QCalendarWidget QWidget {{ alternate-background-color: {c['surface2']}; }}
+QCalendarWidget QWidget#qt_calendar_navigationbar {{ background: {c['surface2']}; }}
+QCalendarWidget QToolButton {{ background: transparent; color: {c['text']}; border: none;
+    border-radius: 7px; padding: 4px 10px; margin: 3px; font-size: 13px; font-weight: 600; }}
+QCalendarWidget QToolButton:hover {{ background: {c['primary_soft']}; color: {c['primary_700']}; }}
+QCalendarWidget QToolButton::menu-indicator {{ image: none; }}
+QCalendarWidget QSpinBox {{ background: {c['surface']}; color: {c['text']};
+    border: 1px solid {c['border_strong']}; border-radius: 6px; }}
+QCalendarWidget QMenu {{ background: {c['surface']}; color: {c['text']};
+    border: 1px solid {c['border_strong']}; padding: 4px; }}
+QCalendarWidget QMenu::item:selected {{ background: {c['primary_soft']}; color: {c['primary_700']}; }}
+QCalendarWidget QAbstractItemView:enabled {{ background: {c['surface']}; color: {c['text']};
+    selection-background-color: {c['primary']}; selection-color: {c['on_primary']}; outline: none; }}
+QCalendarWidget QAbstractItemView:disabled {{ color: {c['text_faint']}; }}
+
 /* ── buttons ── */
 QPushButton {{ border-radius: 10px; padding: 0 18px; min-height: 38px; font-size: 13px; font-weight: 600; border: 2px solid transparent; }}
 QPushButton#primary {{ background: {c['primary']}; color: {c['on_primary']}; }}
@@ -195,6 +218,12 @@ QPushButton#segBtn {{ background: transparent; border: 2px solid transparent; bo
     color: {c['text_soft']}; min-height: 32px; padding: 0 16px; font-size: 13px; font-weight: 600; }}
 QPushButton#segBtn:hover {{ color: {c['text']}; }}
 QPushButton#segBtn[active="true"] {{ background: {c['surface']}; color: {c['primary_700']}; }}
+QPushButton#segBtn:disabled {{ color: {c['text_faint']}; }}
+
+/* ── period filter (step 3) ── */
+QFrame#filterBar {{ background: {c['surface3']}; border: 1px solid {c['border']}; border-radius: 10px; }}
+QLabel#rangeHint {{ color: {c['text_faint']}; font-size: 12px; }}
+QLabel#rangeTilde {{ color: {c['text_faint']}; font-size: 13px; }}
 
 /* ── summary + timeline (step 3) ── */
 QFrame#summaryBar {{ background: {c['surface3']}; border: 1px solid {c['border']}; border-radius: 10px; }}

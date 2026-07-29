@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import datetime as _dt
 
+from .history import format_ts
+
 
 def _ms(y, mo, d, h, mi, s) -> int:
     return int(_dt.datetime(y, mo, d, h, mi, s).timestamp() * 1000)
@@ -84,20 +86,53 @@ def _cfg(rev, rtype, ts, name, value, vmod, vt=13, vtmod=0):
             "value": value, "value_MOD": vmod, "value_type": vt, "value_type_MOD": vtmod}
 
 
-def full_history(before_rev=None) -> dict:
-    """All-records changeset page for the demo config table: three settings
-    created together, then edited in two later revisions. One page only."""
+_C, _E, _T = _ms(2025, 6, 13, 15, 0, 28), _ms(2026, 6, 20, 9, 14, 2), _ms(2026, 6, 28, 15, 0, 28)
+
+# Three settings created together, then edited in two later revisions.
+# Ordered by name, then REV ascending — exactly as the live query returns them.
+CONFIG_ROWS = [
+    _cfg(100, 0, _C, "notification.mass.block.check_interval_sec", "5", 1),
+    _cfg(100, 0, _C, "notification.mass.block.enable", "0", 1),
+    _cfg(151, 1, _T, "notification.mass.block.enable", "1", 1),
+    _cfg(100, 0, _C, "notification.mass.block.threshold_count", "30", 1),
+    _cfg(142, 1, _E, "notification.mass.block.threshold_count", "50", 1),
+]
+
+
+def _in_range(row, ts_range) -> bool:
+    """Half-open [start, end) epoch-millis window, as the live SQL filter uses."""
+    if not ts_range:
+        return True
+    return ts_range[0] <= row["__revts"] < ts_range[1]
+
+
+def full_history(before_rev=None, ts_range=None) -> dict:
+    """All-records changeset page for the demo config table (single page)."""
     if before_rev is not None:          # demo has a single page — nothing older
         return {"rows": [], "baseline": [], "min_rev": None, "has_more": False}
-    c, e, t = _ms(2025, 6, 13, 15, 0, 28), _ms(2026, 6, 20, 9, 14, 2), _ms(2026, 6, 28, 15, 0, 28)
-    rows = [  # ordered by name, then REV ascending (as the live query returns)
-        _cfg(100, 0, c, "notification.mass.block.check_interval_sec", "5", 1),
-        _cfg(100, 0, c, "notification.mass.block.enable", "0", 1),
-        _cfg(151, 1, t, "notification.mass.block.enable", "1", 1),
-        _cfg(100, 0, c, "notification.mass.block.threshold_count", "30", 1),
-        _cfg(142, 1, e, "notification.mass.block.threshold_count", "50", 1),
-    ]
-    return {"rows": rows, "baseline": [], "min_rev": 100, "has_more": False}
+    rows = [r for r in CONFIG_ROWS if _in_range(r, ts_range)]
+    if not rows:
+        return {"rows": [], "baseline": [], "min_rev": None, "has_more": False}
+    lo = min(r["REV"] for r in rows)
+    # Same role as the live baseline query: each record's last state strictly
+    # before the window, so a filtered-out creation still yields a "before" value.
+    pre: dict = {}
+    for r in CONFIG_ROWS:
+        if r["REV"] < lo:
+            pre[r["name"]] = r
+    return {"rows": rows, "baseline": list(pre.values()), "min_rev": lo, "has_more": False}
+
+
+def full_history_count(ts_range=None) -> dict:
+    """Pre-load tally for the demo config table (mirrors the live COUNT query)."""
+    rows = [r for r in CONFIG_ROWS if _in_range(r, ts_range)]
+    times = sorted(r["__revts"] for r in rows)
+    return {
+        "revisions": len({r["REV"] for r in rows}),
+        "rows": len(rows),
+        "first_ts": format_ts(times[0]) if times else None,
+        "last_ts": format_ts(times[-1]) if times else None,
+    }
 
 
 def rows() -> list[dict]:
