@@ -9,7 +9,7 @@ from PySide6.QtCore import (Property, QDate, QEasingCurve, QObject, QPoint,
                             QRunnable, QSize, Qt, QThreadPool, QTimer, Signal)
 from PySide6.QtGui import (QColor, QCursor, QFont, QFontMetrics, QIcon,
                            QLinearGradient, QPainter, QPainterPath, QPen,
-                           QPixmap, QPolygonF, QRadialGradient)
+                           QPixmap, QPolygonF, QRadialGradient, QRegion)
 from PySide6.QtWidgets import (QApplication, QCalendarWidget, QDateEdit, QFrame,
                                QGraphicsDropShadowEffect, QHBoxLayout, QLabel,
                                QLayout, QLineEdit, QPushButton, QScrollArea,
@@ -609,15 +609,16 @@ class SnapshotPopup(QWidget):
         # owner the wrapper is collected the moment the caller returns and the
         # popup vanishes before it is ever seen.
         super().__init__(parent, Qt.Popup)
-        self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_DeleteOnClose)
         self._snapshot = record.get("snapshot") or {}
 
+        # The window is opaque and clipped to a rounded mask (see resizeEvent).
+        # A translucent window with margins for a drop shadow renders those
+        # margins black once the compositor gets hold of it.
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(14, 12, 14, 16)        # room for the shadow
+        outer.setContentsMargins(0, 0, 0, 0)
         card = QFrame()
         card.setObjectName("snapPopup")
-        soft_shadow(card, blur=34, dy=8, alpha=46)
         outer.addWidget(card)
         cv = QVBoxLayout(card)
         cv.setContentsMargins(0, 0, 0, 0)
@@ -737,6 +738,16 @@ class SnapshotPopup(QWidget):
     def _copy_all(self) -> None:
         copy_value(json.dumps(self._snapshot, ensure_ascii=False, indent=2),
                    QCursor.pos())
+
+    RADIUS = 12
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # Clip the window to the card's rounded outline so the corners show the
+        # desktop, not an unpainted square behind the radius.
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(self.rect()), self.RADIUS, self.RADIUS)
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
 
     # ── placement ───────────────────────────────────────────────────────
     def pop_at(self, global_pos: QPoint) -> None:

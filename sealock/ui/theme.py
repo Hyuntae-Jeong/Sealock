@@ -119,7 +119,11 @@ def _build_qss(c: dict[str, str]) -> str:
     return f"""
 * {{ font-family: "Malgun Gothic", "Segoe UI", "Noto Sans KR", sans-serif; }}
 QWidget#root {{ background: {c['bg']}; }}
-QToolTip {{ background: {c['overlay']}; color: {c['overlay_text']}; border: none; padding: 6px 9px; border-radius: 6px; }}
+/* Tooltips are their own windows: a border-radius here would leave the corners
+   unpainted (they composite as a dark frame), so keep them square-cornered and
+   let a hairline border carry the shape. */
+QToolTip {{ background: {c['surface']}; color: {c['text_soft']}; border: 1px solid {c['border_strong']};
+    padding: 5px 9px; font-size: 12px; }}
 
 /* ── topbar ── */
 QFrame#topbar {{ background: {c['surface']}; border: none; border-bottom: 1px solid {c['border']}; }}
