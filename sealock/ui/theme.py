@@ -197,6 +197,11 @@ QPushButton#ghost:hover {{ background: {c['surface2']}; color: {c['text']}; }}
 QPushButton#chip {{ background: {c['surface2']}; color: {c['text_soft']}; border: 1px solid {c['border_strong']};
     border-radius: 14px; min-height: 26px; padding: 0 12px; font-size: 12px; font-family: {MONO}; }}
 QPushButton#chip:hover {{ background: {c['primary_soft']}; color: {c['primary_700']}; border-color: {c['primary']}; }}
+/* 선택된 칩은 hover(연한 인디고)와 헷갈리지 않게 채워서 표시한다. :hover 규칙보다
+   뒤에 두어 같은 우선순위에서 이기게 하고, 마우스를 올렸을 때만 한 톤 밝아진다. */
+QPushButton#chip[active="true"] {{ background: {c['primary']}; color: {c['on_primary']};
+    border-color: {c['primary']}; font-weight: 700; }}
+QPushButton#chip[active="true"]:hover {{ background: {c['primary_hover']}; border-color: {c['primary_hover']}; }}
 
 /* ── connection status ── */
 QLabel#statusOk {{ background: {c['success_bg']}; color: {c['green_text']}; border: 1px solid {c['success_border']}; border-radius: 10px; padding: 11px 14px; font-weight: 600; }}

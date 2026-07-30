@@ -172,6 +172,8 @@ class TablePage(QWidget):
         self.preview_data: dict | None = None
         self.ident_combo: QComboBox | None = None
         self._all_aud_tables: list[str] = []
+        self._chip_btns: dict[str, QPushButton] = {}
+        self._picked: str | None = None   # 미리보기가 성공한 테이블 = 강조할 칩
 
         card = QFrame()
         card.setObjectName("card")
@@ -248,6 +250,8 @@ class TablePage(QWidget):
         clear_layout(self.preview_layout)
         clear_layout(self.chips_flow)
         self._all_aud_tables = []
+        self._chip_btns = {}
+        self._picked = None
         self.chips_caption.setText("_AUD 테이블 불러오는 중…")
         # Empty by default; demo pre-fills its sample table. (Set before the
         # async fill so the chip filter starts from the right text.)
@@ -268,6 +272,7 @@ class TablePage(QWidget):
 
     def _render_chips(self, needle: str) -> None:
         clear_layout(self.chips_flow)
+        self._chip_btns = {}
         needle = (needle or "").strip().lower()
         matches = [t for t in self._all_aud_tables if needle in t.lower()]
         for t in matches:
@@ -276,6 +281,9 @@ class TablePage(QWidget):
             chip.setCursor(Qt.PointingHandCursor)
             chip.clicked.connect(lambda _=False, name=t: self._pick_chip(name))
             self.chips_flow.addWidget(chip)
+            self._chip_btns[t] = chip
+        # 목록이 필터로 다시 그려져도 지금 보고 있는 테이블은 계속 강조된 채로 남는다.
+        self._mark_selected(self._picked)
 
         total = len(self._all_aud_tables)
         if total == 0:
@@ -287,8 +295,17 @@ class TablePage(QWidget):
 
     def _pick_chip(self, name: str) -> None:
         # Clicking a candidate fills the name and previews it immediately.
+        # 목록은 다시 그리지 않는다 — 이름으로 필터링돼 나머지 후보가 사라진다.
         self.table_name.setText(name)
         self._preview()
+
+    def _mark_selected(self, name: str | None) -> None:
+        """Highlight the chip of the table currently being previewed."""
+        for table, chip in self._chip_btns.items():
+            on = table == name
+            if chip.property("active") != on:
+                chip.setProperty("active", on)
+                repolish(chip)
 
     def _preview(self) -> None:
         table = self.table_name.text().strip()
@@ -301,9 +318,13 @@ class TablePage(QWidget):
             self.preview_data = data
             self._render_preview(data)
             self.next_btn.setEnabled(True)
+            self._picked = table
+            self._mark_selected(table)
 
         def err(msg):
             clear_layout(self.preview_layout)
+            self._picked = None
+            self._mark_selected(None)
             self.error.emit(msg)
 
         run_async(services.preview_table, ok, err, self.state, table)
