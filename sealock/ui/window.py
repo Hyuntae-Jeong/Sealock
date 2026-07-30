@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (QApplication, QComboBox, QFrame,
                                QPushButton, QScrollArea, QSizePolicy,
                                QStackedWidget, QVBoxLayout, QWidget)
 
-from .. import services, settings
+from .. import demo, services, settings
 from ..resources import app_icon
 from ..services import AppState
 from . import theme
@@ -251,7 +251,7 @@ class TablePage(QWidget):
         self.chips_caption.setText("_AUD 테이블 불러오는 중…")
         # Empty by default; demo pre-fills its sample table. (Set before the
         # async fill so the chip filter starts from the right text.)
-        self.table_name.setText("member_AUD" if self.state.demo else "")
+        self.table_name.setText(demo.DEFAULT_TABLE if self.state.demo else "")
         run_async(services.list_aud_tables, self._fill_chips, self._chips_error, self.state)
         if self.state.demo:
             self._preview()
@@ -609,12 +609,9 @@ class HistoryPage(QWidget):
         # Placeholder example only in demo/test mode — in real use a fixed
         # example wrongly implies a required format (the "예: 42" that misled).
         self.id_edit.clear()
-        self.id_edit.setPlaceholderText(self._demo_example(ident) if self.state.demo else "")
+        self.id_edit.setPlaceholderText(
+            f"예: {demo.example_id(ctx.get('table'))}" if self.state.demo else "")
         self._set_mode("search")          # default mode on entry
-
-    @staticmethod
-    def _demo_example(ident: str) -> str:
-        return "예: notification.mass.block.enable" if ident.lower() == "name" else "예: 42"
 
     def _set_mode(self, mode: str) -> None:
         self._mode = mode

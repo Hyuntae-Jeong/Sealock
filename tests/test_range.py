@@ -16,11 +16,17 @@ from sealock import demo, services  # noqa: E402
 KST = dt.timezone(dt.timedelta(hours=9))
 
 
-def _state():
+def _state(table: str = demo.DEFAULT_TABLE):
     st = services.AppState()
     st.demo = True
-    services.confirm_table(st, demo.CONFIG_TABLE, None)
+    services.confirm_table(st, table, None)
     return st
+
+
+def _day(days_ago: int) -> dt.date:
+    """The KST day the demo data anchors on — the sample rows are laid out
+    relative to today, so a fixed calendar date would not do."""
+    return (demo._TODAY - dt.timedelta(days=days_ago)).date()
 
 
 class _FakeDB:
@@ -110,28 +116,30 @@ def test_date_range_needs_a_revinfo_timestamp():
 # ── end-to-end through demo mode ────────────────────────────────────────
 def test_count_tallies_the_whole_table_by_default():
     c = services.count_full_history(_state())
-    assert (c["revisions"], c["rows"]) == (3, 5)
+    assert c["revisions"] > 0 and c["rows"] >= c["revisions"]
     assert c["first_ts"] < c["last_ts"]
 
 
 def test_count_narrows_to_the_picked_period():
-    c = services.count_full_history(_state(), dt.date(2026, 6, 25), dt.date(2026, 6, 30))
-    assert (c["revisions"], c["rows"]) == (1, 1)
+    whole = services.count_full_history(_state())
+    recent = services.count_full_history(_state(), _day(6), _day(0))
+    assert 0 < recent["revisions"] < whole["revisions"]
+    assert recent["first_ts"] >= whole["first_ts"]
     empty = services.count_full_history(_state(), dt.date(2020, 1, 1), dt.date(2020, 12, 31))
     assert (empty["revisions"], empty["rows"]) == (0, 0)
     assert empty["first_ts"] is None
 
 
 def test_filtered_load_keeps_the_pre_period_before_value():
-    # Only the rev-151 edit falls in the period; its "before" value comes from
-    # the creation at rev 100, which is outside it.
+    # Only alice's 5일 전 e-mail change falls in the period; its "before" value
+    # was set 220일 전, outside the window, so it can only come from the baseline.
     r = services.get_full_history(_state(), None, services.FULL_HISTORY_PAGE,
-                                  dt.date(2026, 6, 28), dt.date(2026, 6, 28))
+                                  _day(5), _day(5))
     assert not r["empty"] and len(r["timeline"]) == 1
-    node = r["timeline"][0]
-    assert node["rev"] == 151
-    change = node["records"][0]["changes"][0]
-    assert (change["old"], change["new"]) == ("0", "1")
+    records = r["timeline"][0]["records"]
+    assert [rec["identifier"] for rec in records] == ["id = 42"]
+    change = next(c for c in records[0]["changes"] if c["column"] == "email")
+    assert (change["old"], change["new"]) == ("alice.kim@example.com", "alice@example.com")
 
 
 def test_period_with_no_revisions_reads_as_empty():
@@ -140,10 +148,34 @@ def test_period_with_no_revisions_reads_as_empty():
     assert r["empty"] and r["timeline"] == [] and r["min_rev"] is None
 
 
-def test_unfiltered_load_is_unchanged():
+def test_unfiltered_load_is_newest_first_and_fits_one_page():
     r = services.get_full_history(_state())
-    assert [n["rev"] for n in r["timeline"]] == [151, 142, 100]
-    assert r["min_rev"] == 100 and not r["has_more"]
+    revs = [n["rev"] for n in r["timeline"]]
+    assert revs == sorted(revs, reverse=True)
+    assert r["min_rev"] == revs[-1] and not r["has_more"]
+
+
+def test_high_volume_table_pages_from_the_newest_revision():
+    st = _state("order_aud")
+    first = services.get_full_history(st)
+    assert len(first["timeline"]) == services.FULL_HISTORY_PAGE and first["has_more"]
+
+    rest = services.get_full_history(st, first["min_rev"])
+    assert rest["timeline"] and not rest["has_more"]
+    # The next page continues strictly below the first one — no repeats, no gap.
+    assert max(n["rev"] for n in rest["timeline"]) < first["min_rev"]
+    assert services.count_full_history(st)["revisions"] == (
+        len(first["timeline"]) + len(rest["timeline"]))
+
+
+def test_paging_stays_inside_the_applied_period():
+    st = _state("order_aud")
+    scoped = services.get_full_history(st, None, 20, _day(29), _day(0))
+    assert len(scoped["timeline"]) == 20 and scoped["has_more"]
+    inside = services.count_full_history(st, _day(29), _day(0))["revisions"]
+    page2 = services.get_full_history(st, scoped["min_rev"], 20, _day(29), _day(0))
+    assert len(page2["timeline"]) == min(20, inside - 20)
+    assert all(n["timestamp"][:10] >= _day(29).isoformat() for n in page2["timeline"])
 
 
 if __name__ == "__main__":

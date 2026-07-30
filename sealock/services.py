@@ -77,7 +77,7 @@ def test_and_connect(state: AppState, p: dict) -> str:
 # ── step 2: table preview ───────────────────────────────────────────────
 def list_aud_tables(state: AppState) -> list[str]:
     if state.demo:
-        return ["member_AUD", demo.CONFIG_TABLE, "order_AUD", "product_AUD"]
+        return demo.tables()
     # Filter in Python (case-insensitive) rather than via SQL LIKE — avoids
     # backslash-escaping / collation / NO_BACKSLASH_ESCAPES pitfalls so both
     # `_AUD` and `_aud` are reliably found whatever the server config.
@@ -110,7 +110,7 @@ def get_history(state: AppState, id_value) -> dict:
         raise ValueError("조회할 ID를 입력하세요.")
 
     if state.demo:
-        rows = [] if str(id_value).strip() == "999" else demo.rows()
+        rows = demo.rows(ctx.get("table"), id_value)
     else:
         rows = _fetch_rows(state.db, ctx, id_value)
 
@@ -232,7 +232,7 @@ def count_full_history(state: AppState, date_from=None, date_to=None) -> dict:
     rng = _norm_range(date_from, date_to)
 
     if state.demo:
-        return demo.full_history_count(_epoch_bounds(rng, 1000) if rng else None)
+        return demo.full_history_count(ctx.get("table"), _epoch_bounds(rng, 1000) if rng else None)
     return _count_all_rows(state.db, ctx, _sql_bounds(state.db, ctx, rng))
 
 
@@ -249,7 +249,8 @@ def get_full_history(
     rng = _norm_range(date_from, date_to)
 
     if state.demo:
-        data = demo.full_history(before_rev, _epoch_bounds(rng, 1000) if rng else None)
+        data = demo.full_history(ctx.get("table"), before_rev,
+                                 _epoch_bounds(rng, 1000) if rng else None, limit_revs)
     else:
         bounds = _sql_bounds(state.db, ctx, rng)
         data = _fetch_all_rows(state.db, ctx, before_rev, limit_revs, bounds)
