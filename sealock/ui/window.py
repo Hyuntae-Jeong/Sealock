@@ -174,6 +174,7 @@ class TablePage(QWidget):
         self._all_aud_tables: list[str] = []
         self._chip_btns: dict[str, QPushButton] = {}
         self._picked: str | None = None   # 미리보기가 성공한 테이블 = 강조할 칩
+        self._filter = ""                 # 사용자가 직접 친 글자만 후보를 좁힌다
 
         card = QFrame()
         card.setObjectName("card")
@@ -241,7 +242,7 @@ class TablePage(QWidget):
         root.addLayout(_centered(card), 1)
 
         self.table_name.returnPressed.connect(self._preview)
-        self.table_name.textEdited.connect(self._render_chips)
+        self.table_name.textEdited.connect(self._filter_chips)
         self.back_btn.clicked.connect(self.back.emit)
         self.next_btn.clicked.connect(self._confirm)
 
@@ -252,6 +253,7 @@ class TablePage(QWidget):
         self._all_aud_tables = []
         self._chip_btns = {}
         self._picked = None
+        self._filter = ""
         self.chips_caption.setText("_AUD 테이블 불러오는 중…")
         # Empty by default; demo pre-fills its sample table. (Set before the
         # async fill so the chip filter starts from the right text.)
@@ -264,16 +266,25 @@ class TablePage(QWidget):
 
     def _fill_chips(self, tables: list[str]) -> None:
         self._all_aud_tables = tables
-        self._render_chips(self.table_name.text())
+        self._render_chips()
 
     def _chips_error(self, msg: str) -> None:
         self.chips_caption.setText("_AUD 테이블 목록을 불러오지 못했습니다 — 이름을 직접 입력하세요.")
         self.error.emit(f"_AUD 테이블 목록 조회 실패: {msg}")
 
-    def _render_chips(self, needle: str) -> None:
+    def _filter_chips(self, needle: str) -> None:
+        """Narrow the candidates — only from what the user actually typed.
+
+        이름을 코드가 채워 넣는 경우(데모 진입, 칩 클릭)에는 목록을 좁히지 않는다.
+        고른 이름이 곧 필터가 되면 나머지 후보가 사라져 둘러볼 수가 없다.
+        """
+        self._filter = needle or ""
+        self._render_chips()
+
+    def _render_chips(self) -> None:
         clear_layout(self.chips_flow)
         self._chip_btns = {}
-        needle = (needle or "").strip().lower()
+        needle = self._filter.strip().lower()
         matches = [t for t in self._all_aud_tables if needle in t.lower()]
         for t in matches:
             chip = QPushButton(t)

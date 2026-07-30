@@ -33,7 +33,7 @@ def main() -> int:
 
     win.goto(1)
     win.page_table._fill_chips([f"sample_{i}_aud" for i in range(30)] + demo.tables())
-    win.page_table._render_chips("sample_1")
+    win.page_table._filter_chips("sample_1")
     win.page_table._render_preview(demo.preview())
 
     services.confirm_table(st, demo.DEFAULT_TABLE, "id")
