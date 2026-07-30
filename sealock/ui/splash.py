@@ -14,8 +14,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QColor, QPainter, QPixmap
 from PySide6.QtWidgets import (
-    QApplication, QFrame, QGraphicsDropShadowEffect, QLabel, QVBoxLayout,
-    QWidget,
+    QApplication, QFrame, QLabel, QVBoxLayout, QWidget,
 )
 
 from sealock.resources import asset_path
@@ -117,14 +116,12 @@ class SplashScreen(QWidget):
         lay.addSpacing(12)
         lay.addWidget(self._bar, 0, Qt.AlignCenter)
 
-        shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(44)
-        shadow.setOffset(0, 12)
-        shadow.setColor(QColor(31, 36, 64, 65))
-        card.setGraphicsEffect(shadow)
-
+        # 그림자는 두지 않는다. 반투명 창 안에서 QGraphicsDropShadowEffect 를 쓰면
+        # macOS 합성 단계에서 그림자용 여백이 부드럽게 번지는 대신 불투명한 어두운
+        # 사각형으로 드러난다 (스냅샷 팝업에서 겪은 것과 같은 문제). 창을 카드에
+        # 딱 맞추면 둥근 모서리는 border-radius 가 안티에일리어싱된 채로 남는다.
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(34, 30, 34, 40)  # breathing room for the shadow
+        outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(card)
 
         self._anim = QPropertyAnimation(self, b"windowOpacity", self)
