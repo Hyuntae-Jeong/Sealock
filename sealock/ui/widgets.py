@@ -849,11 +849,11 @@ class TimelineCard(QFrame):
             nc.setObjectName("noChange")
             bv.addWidget(nc)
         else:
-            for i, ch in enumerate(node["changes"]):
-                r = _change_row(ch, name_width)
-                if i < len(node["changes"]) - 1:
-                    r.setStyleSheet("border-bottom: 1px dashed #e9ecf4;")
-                bv.addWidget(r)
+            # 행 사이 구분선은 두지 않는다. 위젯에 건 스타일시트는 자식에게도
+            # 상속돼 값 알약과 태그까지 점선 테두리를 두르고, 다크 모드에서는
+            # 그 선이 밝게 튄다. 행 여백과 값 알약만으로 충분히 구분된다.
+            for ch in node["changes"]:
+                bv.addWidget(_change_row(ch, name_width))
 
     def set_selected(self, on: bool) -> None:
         self.setProperty("selected", bool(on))
