@@ -69,11 +69,13 @@ class ConnectionPage(QWidget):
         grid = QGridLayout()
         grid.setHorizontalSpacing(16)
         grid.setVerticalSpacing(16)
-        host_w, self.host = field("호스트", "localhost")
+        # 포트만 힌트를 남긴다. 나머지는 빈칸 — 추천값처럼 보이는 회색 글씨가
+        # 입력된 값과 헷갈리기 때문. 비워두면 localhost:3306 으로 붙는다(_payload).
+        host_w, self.host = field("호스트")
         port_w, self.port = field("포트", "3306")
-        user_w, self.user = field("사용자", "root")
-        pw_w, self.password = field("비밀번호", "••••••••", echo=True)
-        db_w, self.database = field("데이터베이스 (스키마)", "my_schema")
+        user_w, self.user = field("사용자")
+        pw_w, self.password = field("비밀번호", echo=True)
+        db_w, self.database = field("데이터베이스 (스키마)")
         grid.addWidget(host_w, 0, 0)
         grid.addWidget(port_w, 0, 1)
         grid.addWidget(user_w, 1, 0)

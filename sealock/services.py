@@ -46,21 +46,26 @@ class AppState:
 
 # ── step 1: connection ──────────────────────────────────────────────────
 def form_defaults() -> dict:
-    """Pre-fill the login form from a git-ignored local config, if present."""
+    """Pre-fill the login form from a git-ignored local config, if present.
+
+    Without that file every field starts empty — the form then shows only what
+    was actually saved, instead of half real values and half hints. Leaving
+    호스트/포트 blank still connects to localhost:3306 (see the UI's _payload).
+    """
     if os.path.exists(CONFIG_LOCAL):
         try:
             with open(CONFIG_LOCAL, "r", encoding="utf-8") as fh:
                 d = json.load(fh)
             return {
-                "host": d.get("host", "localhost"),
-                "port": d.get("port", 3306),
+                "host": d.get("host", ""),
+                "port": d.get("port", ""),
                 "user": d.get("user", ""),
                 "password": d.get("password", ""),
                 "database": d.get("database", ""),
             }
         except Exception:  # noqa: BLE001
             pass
-    return {"host": "localhost", "port": 3306, "user": "", "password": "", "database": ""}
+    return {"host": "", "port": "", "user": "", "password": "", "database": ""}
 
 
 def test_and_connect(state: AppState, p: dict) -> str:
