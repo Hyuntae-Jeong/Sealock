@@ -9,7 +9,7 @@ from PySide6.QtCore import (Property, QDate, QEasingCurve, QObject, QPoint,
                             QRunnable, QSize, Qt, QThreadPool, QTimer, Signal)
 from PySide6.QtGui import (QColor, QCursor, QFont, QFontMetrics, QIcon,
                            QLinearGradient, QPainter, QPainterPath, QPen,
-                           QPixmap, QPolygonF, QRadialGradient, QRegion)
+                           QPixmap, QPolygonF, QRadialGradient)
 from PySide6.QtWidgets import (QApplication, QCalendarWidget, QDateEdit, QFrame,
                                QGraphicsDropShadowEffect, QHBoxLayout, QLabel,
                                QLayout, QLineEdit, QPushButton, QScrollArea,
@@ -610,11 +610,12 @@ class SnapshotPopup(QWidget):
         # popup vanishes before it is ever seen.
         super().__init__(parent, Qt.Popup)
         self.setAttribute(Qt.WA_DeleteOnClose)
+        # 창은 투명하게 두고 배경은 안쪽 카드가 그린다. 예전에는 불투명 창을
+        # 라운드 마스크로 오려냈는데 마스크는 안티에일리어싱이 없어 모서리가
+        # 계단처럼 깨졌다. 그림자용 여백만 두지 않으면 반투명 자체는 안전하다.
+        self.setAttribute(Qt.WA_TranslucentBackground)
         self._snapshot = record.get("snapshot") or {}
 
-        # The window is opaque and clipped to a rounded mask (see resizeEvent).
-        # A translucent window with margins for a drop shadow renders those
-        # margins black once the compositor gets hold of it.
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         card = QFrame()
@@ -738,16 +739,6 @@ class SnapshotPopup(QWidget):
     def _copy_all(self) -> None:
         copy_value(json.dumps(self._snapshot, ensure_ascii=False, indent=2),
                    QCursor.pos())
-
-    RADIUS = 12
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        # Clip the window to the card's rounded outline so the corners show the
-        # desktop, not an unpainted square behind the radius.
-        path = QPainterPath()
-        path.addRoundedRect(QRectF(self.rect()), self.RADIUS, self.RADIUS)
-        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
 
     # ── placement ───────────────────────────────────────────────────────
     def pop_at(self, global_pos: QPoint) -> None:
