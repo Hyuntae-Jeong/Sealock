@@ -10,10 +10,12 @@ from PySide6.QtWidgets import (QApplication, QComboBox, QFrame,
                                QPushButton, QScrollArea, QSizePolicy,
                                QStackedWidget, QVBoxLayout, QWidget)
 
-from .. import demo, services, settings
+from .. import demo, services, settings, updater
 from ..resources import app_icon
 from ..services import AppState
+from ..version import __version__
 from . import theme
+from .update import SettingsPanel
 from .widgets import (BrandMark, FlowLayout, Stepper, TimelineCard, button,
                       changeset_summary_bar, clear_layout, date_edit, field,
                       meta_badge, name_column_width, repolish, run_async,
@@ -102,11 +104,31 @@ class ConnectionPage(QWidget):
         foot.addWidget(self.next_btn)
         cv.addLayout(foot)
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(24, 28, 24, 28)
-        root.addStretch(1)
-        root.addLayout(_centered(card))
-        root.addStretch(1)
+        body = QVBoxLayout()
+        body.setContentsMargins(24, 28, 24, 28)
+        body.addStretch(1)
+        body.addLayout(_centered(card))
+        body.addStretch(1)
+
+        # 첫 화면에만 두는 설정 진입점. 버전은 이 버튼 옆이 아니라 패널 안에서
+        # 상태(최신 / 새 버전 있음)와 함께 보여준다.
+        gear_row = QHBoxLayout()
+        gear_row.addStretch(1)
+        self.gear_btn = QPushButton("⚙  설정")
+        self.gear_btn.setObjectName("gearBtn")
+        self.gear_btn.setCursor(Qt.PointingHandCursor)
+        self.gear_btn.clicked.connect(self._toggle_settings)
+        gear_row.addWidget(self.gear_btn)
+        body.addLayout(gear_row)
+
+        # 설정 패널은 레이아웃의 일부다 — 열리면 폭을 차지하므로 카드가 남은
+        # 자리 기준으로 다시 가운데 정렬되고, 설정 버튼도 함께 왼쪽으로 밀린다.
+        self.settings_panel = SettingsPanel(self)
+        root = QHBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+        root.addLayout(body, 1)
+        root.addWidget(self.settings_panel)
 
         d = services.form_defaults()
         self.host.setText(str(d["host"]))
@@ -120,6 +142,9 @@ class ConnectionPage(QWidget):
         self.next_btn.clicked.connect(lambda: self.proceed.emit(False))
         self.database.returnPressed.connect(self._test)
         self.password.returnPressed.connect(self._test)
+
+    def _toggle_settings(self) -> None:
+        self.settings_panel.toggle()
 
     def _payload(self) -> dict:
         return {
@@ -1021,6 +1046,7 @@ class MainWindow(QMainWindow):
         self.resize(1240, 960)
         self.setMinimumSize(1040, 740)
         self.state = AppState()
+        self._update_reported = False
 
         root = QWidget()
         root.setObjectName("root")
@@ -1137,6 +1163,25 @@ class MainWindow(QMainWindow):
     def goto(self, idx: int) -> None:
         self.stack.setCurrentIndex(idx)
         self.stepper.set_current(idx + 1)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self._update_reported:
+            self._update_reported = True
+            QTimer.singleShot(500, self._report_update_result)
+
+    def _report_update_result(self) -> None:
+        """직전에 사용자가 실행한 업데이트가 어떻게 끝났는지만 알린다.
+
+        새 버전을 찾아 나서지는 않는다 — 네트워크를 쓰지 않고, 업데이트 도우미가
+        남긴 로컬 파일만 읽는다.
+        """
+        failure = updater.take_error()
+        target = updater.take_pending()
+        if failure:
+            self.toast(f"업데이트 실패 — {updater.explain_swap_error(failure)}", True)
+        elif target and target == __version__:
+            self.toast(f"v{__version__} 로 업데이트되었습니다.")
 
     def _on_step_clicked(self, idx: int) -> None:
         # 이미 거쳐온(완료된) 단계로만 되돌아갈 수 있다. 앞 단계 건너뛰기는

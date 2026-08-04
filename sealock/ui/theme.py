@@ -263,6 +263,26 @@ QLabel#delNote {{ color: {c['danger_text']}; font-weight: 600; font-size: 13px; 
 
 /* ── revision snapshot popup (right-click a card) ── */
 QFrame#snapPopup {{ background: {c['surface']}; border: 1px solid {c['border_strong']}; border-radius: 12px; }}
+
+/* ── 설정 패널 / 업데이트 ── */
+QPushButton#gearBtn {{ background: transparent; border: none; color: {c['text_faint']};
+    min-height: 30px; padding: 0 8px; font-size: 12px; font-weight: 600; }}
+QPushButton#gearBtn:hover {{ color: {c['text_soft']}; }}
+QFrame#settingsPanel {{ background: {c['surface']}; border: none;
+    border-left: 1px solid {c['border']}; }}
+QLabel#panelName {{ font-size: 15px; font-weight: 800; color: {c['text']}; }}
+QLabel#panelNote {{ font-size: 12px; color: {c['text_soft']}; }}
+QFrame#panelSep {{ background: {c['border']}; border: none;
+    min-height: 1px; max-height: 1px; }}
+QPushButton#menuItem {{ background: transparent; border: none; border-radius: 7px;
+    color: {c['text']}; text-align: left; padding: 0 10px; min-height: 32px;
+    font-size: 13px; font-weight: 500; }}
+QPushButton#menuItem:hover {{ background: {c['surface2']}; }}
+QPushButton#menuItem:disabled {{ color: {c['text_faint']}; }}
+QTextBrowser#notesBody {{ background: {c['surface']}; border: none; color: {c['text_soft']};
+    font-size: 12px; }}
+QProgressBar {{ background: {c['surface3']}; border: none; border-radius: 3px; }}
+QProgressBar::chunk {{ background: {c['primary']}; border-radius: 3px; }}
 QFrame#snapHead {{ background: transparent; border: none; border-bottom: 1px solid {c['border']}; }}
 QFrame#snapFoot {{ background: {c['surface2']}; border: none; border-top: 1px solid {c['border']};
     border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; }}

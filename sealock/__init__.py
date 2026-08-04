@@ -1,3 +1,3 @@
 """Sealock — a friendly viewer for Hibernate Envers (_AUD) change history."""
 
-__version__ = "0.1.0"
+from .version import __version__  # noqa: F401  (re-exported for convenience)

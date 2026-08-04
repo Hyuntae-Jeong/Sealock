@@ -23,6 +23,21 @@ jobs:
         with:
           python-version: "3.13"
 
+      # 태그(vX.Y.Z)에서 버전을 뽑아 sealock/version.py 를 덮어씁니다. 리포에 커밋된
+      # 값은 "+dev" placeholder 이고, 그 상태에서는 앱 내 업데이트가 비활성화됩니다.
+      # (workflow_dispatch 로 돌린 빌드 점검에는 태그가 없으므로 건너뜁니다)
+      - name: Inject version from tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: python
+        run: |
+          import os, pathlib
+          tag = os.environ["GITHUB_REF_NAME"]
+          version = tag.lstrip("v")
+          path = pathlib.Path("sealock") / "version.py"
+          path.write_text(f'"""App version — injected from the git tag by CI."""\n\n'
+                          f'__version__ = "{version}"\n', encoding="utf-8")
+          print(f"Injected __version__ = {version} (from tag {tag})")
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -53,6 +68,21 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+
+      # 태그(vX.Y.Z)에서 버전을 뽑아 sealock/version.py 를 덮어씁니다. 리포에 커밋된
+      # 값은 "+dev" placeholder 이고, 그 상태에서는 앱 내 업데이트가 비활성화됩니다.
+      # (workflow_dispatch 로 돌린 빌드 점검에는 태그가 없으므로 건너뜁니다)
+      - name: Inject version from tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: python
+        run: |
+          import os, pathlib
+          tag = os.environ["GITHUB_REF_NAME"]
+          version = tag.lstrip("v")
+          path = pathlib.Path("sealock") / "version.py"
+          path.write_text(f'"""App version — injected from the git tag by CI."""\n\n'
+                          f'__version__ = "{version}"\n', encoding="utf-8")
+          print(f"Injected __version__ = {version} (from tag {tag})")
 
       - name: Install dependencies
         run: |
