@@ -33,6 +33,9 @@ dist/
 *.manifest
 .deps_installed
 
+# 릴리즈 본문 — CHANGELOG.md 에서 CI 가 만들어 냅니다 (release.yml)
+RELEASE_BODY.md
+
 # OS / editor
 Thumbs.db
 desktop.ini

@@ -33,7 +33,8 @@ class _Resp:
         return self._body
 
 
-def _payload(tag="v9.9.9", assets=None, body="바뀐 것들"):
+def _release(tag="v9.9.9", assets=None, body="바뀐 것들", **extra):
+    """One entry of the /releases list response."""
     names = assets if assets is not None else ["Sealock-macOS.zip", "Sealock-Windows.zip"]
     return {
         "tag_name": tag,
@@ -43,7 +44,13 @@ def _payload(tag="v9.9.9", assets=None, body="바뀐 것들"):
             {"name": n, "browser_download_url": f"https://example.com/{n}", "size": 1234}
             for n in names
         ],
+        **extra,
     }
+
+
+def _payload(*releases, **one):
+    """The endpoint returns a *list* — newest first, as GitHub sends it."""
+    return list(releases) if releases else [_release(**one)]
 
 
 def _patched_urlopen(monkeypatch_target):
@@ -119,6 +126,90 @@ def test_release_without_a_build_for_this_platform_is_an_error():
         _restore(original)
     assert release is None and err.kind == "no_asset"
     assert "플랫폼" in updater.describe(err)
+
+
+# ── release notes ───────────────────────────────────────────────────────
+def _fetch(payload, current="9.9.9"):
+    """fetch_latest() against a canned payload, as if running ``current``."""
+    original = _patched_urlopen(lambda *a, **k: _Resp(payload))
+    was = updater.__version__
+    updater.__version__ = current
+    try:
+        return updater.fetch_latest()
+    finally:
+        _restore(original)
+        updater.__version__ = was
+
+
+def test_download_instructions_are_kept_out_of_the_notes():
+    # The release body carries install help for people who do not have the app
+    # yet. Showing it to someone already inside the app is noise.
+    body = ("### 수정\n\n* 팝업 모서리를 다듬었습니다.\n\n"
+            f"{updater.NOTES_MARKER}\n\n## 다운로드\n\n| 플랫폼 | 파일 |\n")
+    release, err = _fetch(_payload(body=body))
+    assert err is None
+    assert release.notes == "### 수정\n\n* 팝업 모서리를 다듬었습니다."
+    assert "다운로드" not in release.notes
+
+
+def test_a_body_without_the_marker_survives_whole():
+    # Releases published before the marker convention must still show something.
+    release, err = _fetch(_payload(body="예전 릴리즈 본문"))
+    assert err is None and release.notes == "예전 릴리즈 본문"
+
+
+def test_notes_of_skipped_versions_are_included():
+    # 0.0.2 → 0.0.4 installs one build but crosses two releases; 0.0.3's notes
+    # would be lost otherwise. Versions get headings once there are several.
+    release, err = _fetch(
+        _payload(_release("v0.0.4", body="넷"),
+                 _release("v0.0.3", body="셋"),
+                 _release("v0.0.2", body="둘")),
+        current="0.0.2")
+    assert err is None and release.tag == "v0.0.4"
+    assert release.notes == "## v0.0.4\n\n넷\n\n## v0.0.3\n\n셋"
+    assert "둘" not in release.notes          # already installed, not news
+
+
+def test_being_up_to_date_still_shows_the_newest_notes():
+    # 릴리즈 노트 보기 must not come back empty just because nothing is newer.
+    release, err = _fetch(_payload(_release("v9.9.9", body="최신"),
+                                   _release("v9.9.8", body="이전")),
+                          current="9.9.9")
+    assert err is None
+    assert release.notes == "최신"           # single section — no heading needed
+
+
+def test_drafts_and_prereleases_are_not_offered():
+    # /releases includes them; /releases/latest did not. Filtering is ours now.
+    release, err = _fetch(_payload(_release("v9.9.9", draft=True),
+                                   _release("v9.9.8", prerelease=True),
+                                   _release("v1.0.0", body="정식")))
+    assert err is None
+    assert release.tag == "v1.0.0" and release.notes == "정식"
+
+
+def test_newest_is_decided_by_version_not_list_order():
+    # A re-tagged or back-dated release can arrive out of order.
+    release, err = _fetch(_payload(_release("v0.0.3", body="셋"),
+                                   _release("v0.0.10", body="열")),
+                          current="0.0.3")
+    assert err is None and release.tag == "v0.0.10"
+
+
+def test_ci_writes_the_same_marker_the_app_looks_for():
+    # Two files have to agree on one string. If CI's literal drifts, the app
+    # stops finding it and silently shows the download table as "변경 사항"
+    # again — exactly the bug this marker exists to prevent.
+    workflow = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            ".github", "workflows", "release.yml")
+    with open(workflow, encoding="utf-8") as fh:
+        assert updater.NOTES_MARKER in fh.read()
+
+
+def test_no_published_release_is_an_error_not_a_crash():
+    release, err = _fetch(_payload(_release("v9.9.9", draft=True)))
+    assert release is None and err.kind == "parse"
 
 
 def test_network_failure_is_reported_as_such():

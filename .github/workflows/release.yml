@@ -115,10 +115,76 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4      # CHANGELOG.md 를 읽기 위해
+
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+
+      # 릴리즈 본문 = CHANGELOG.md 의 해당 버전 섹션 + 마커 + 설치 안내.
+      #
+      # 청중이 둘이라 한 본문을 마커로 가릅니다. 마커 앞은 이미 앱을 쓰는 사람을 위한
+      # 변경 사항이고, 앱은 이 부분만 잘라 "변경 사항" 으로 보여줍니다
+      # (updater.NOTES_MARKER — 문자열이 양쪽에서 정확히 같아야 합니다). 마커 뒤의
+      # 다운로드 표와 Gatekeeper 안내는 릴리즈 페이지에 처음 온 방문자용입니다.
+      #
+      # 섹션이 없으면 릴리즈를 실패시킵니다 — 노트 없는 버전은 내보내지 않습니다.
+      - name: Build release body from CHANGELOG
+        shell: python
+        run: |
+          import os, pathlib, re, sys
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          version = tag.lstrip("v")
+          repo = os.environ["GITHUB_REPOSITORY"]
+          text = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
+
+          heads = list(re.finditer(r"^##\s*\[([^\]]+)\]", text, re.M))
+          index = next((i for i, h in enumerate(heads) if h.group(1) == version), None)
+          if index is None:
+              sys.exit(f"CHANGELOG.md 에 [{version}] 섹션이 없습니다 — 릴리즈 노트를 먼저 쓰세요.")
+
+          start = text.index("\n", heads[index].end())
+          end = heads[index + 1].start() if index + 1 < len(heads) else len(text)
+          notes = text[start:end].strip()
+          if not notes:
+              sys.exit(f"CHANGELOG.md 의 [{version}] 섹션이 비어 있습니다.")
+
+          # 바로 아래 섹션이 이전 버전입니다 (첫 릴리즈면 없음).
+          previous = heads[index + 1].group(1) if index + 1 < len(heads) else None
+          compare = (f"https://github.com/{repo}/compare/v{previous}...{tag}" if previous
+                     else f"https://github.com/{repo}/commits/{tag}")
+
+          # 들여쓰기가 문자열에 섞이지 않도록 여러 줄 리터럴 대신 줄 목록으로 만듭니다.
+          tail = [
+              "",
+              "<!-- github-only -->",
+              "",
+              "## 다운로드",
+              "",
+              "| 플랫폼 | 파일 | 실행 |",
+              "|--------|------|------|",
+              "| 🪟 Windows | `Sealock-Windows.zip` | 압축 해제 후 `Sealock.exe` 실행 |",
+              "| 🍎 macOS (Apple Silicon) | `Sealock-macOS.zip` | 압축 해제 후 `Sealock.app` 실행 |",
+              "",
+              "> **macOS 첫 실행 안내** — 코드 서명이 안 된 앱이라 Gatekeeper가 막을 수 있습니다.",
+              "> `Sealock.app`을 **우클릭 → 열기**(처음 한 번만)로 여세요. 그래도 막히면 터미널에서",
+              "> `xattr -dr com.apple.quarantine Sealock.app` 실행 후 다시 여세요.",
+              "",
+              f"**전체 변경 내역**: {compare}",
+          ]
+          body = "\n".join([notes] + tail) + "\n"
+          pathlib.Path("RELEASE_BODY.md").write_text(body, encoding="utf-8")
+
+          # 본문은 UTF-8 파일로만 내보냅니다 — stdout 으로 찍으면 러너의 콘솔
+          # 인코딩에 의존하게 되고, 표에 든 이모지가 그걸 깨뜨릴 수 있습니다.
+          summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary:
+              with open(summary, "a", encoding="utf-8") as fh:
+                  fh.write(f"### {tag} 릴리즈 노트\n\n{notes}\n")
+          print(f"OK: {len(notes.splitlines())} lines from CHANGELOG [{version}]")
+          print(f"compare: {compare}")
 
       - name: Create / update release
         uses: softprops/action-gh-release@v2
@@ -127,16 +193,4 @@ jobs:
             artifacts/Sealock-Windows/Sealock-Windows.zip
             artifacts/Sealock-macOS/Sealock-macOS.zip
           fail_on_unmatched_files: true
-          generate_release_notes: true
-          append_body: true
-          body: |
-            ## 다운로드
-
-            | 플랫폼 | 파일 | 실행 |
-            |--------|------|------|
-            | 🪟 Windows | `Sealock-Windows.zip` | 압축 해제 후 `Sealock.exe` 실행 |
-            | 🍎 macOS (Apple Silicon) | `Sealock-macOS.zip` | 압축 해제 후 `Sealock.app` 실행 |
-
-            > **macOS 첫 실행 안내** — 코드 서명이 안 된 앱이라 Gatekeeper가 막을 수 있습니다.
-            > `Sealock.app`을 **우클릭 → 열기**(처음 한 번만)로 여세요. 그래도 막히면 터미널에서
-            > `xattr -dr com.apple.quarantine Sealock.app` 실행 후 다시 여세요.
+          body_path: RELEASE_BODY.md

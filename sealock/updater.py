@@ -36,19 +36,30 @@ from .version import __version__
 
 GITHUB_OWNER = "Hyuntae-Jeong"
 GITHUB_REPO = "Sealock"
-RELEASES_API = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
+# The list, not /releases/latest: a user who skipped versions needs the notes of
+# every release they missed, and one list response carries them all.
+RELEASES_API = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases?per_page=20"
 RELEASES_PAGE = f"https://github.com/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
 USER_AGENT = f"Sealock/{__version__}"
 
 # CI publishes exactly these two, unversioned (see .github/workflows/release.yml).
 ASSETS = {"darwin": "Sealock-macOS.zip", "win32": "Sealock-Windows.zip"}
 
+# A release body serves two audiences. Above this marker are the changes, written
+# for people already running Sealock — that is what the app shows. Below it are
+# the download table and Gatekeeper note, for first-time visitors of the release
+# page, and the app drops them. CI writes the marker (release.yml, "Build release
+# body from CHANGELOG"), so the string must stay identical on both sides.
+# Releases published before this convention have no marker; splitting on a string
+# that is not there simply keeps the whole body.
+NOTES_MARKER = "<!-- github-only -->"
+
 
 @dataclass(frozen=True)
 class Release:
     tag: str            # "v0.0.4"
     version: str        # "0.0.4"
-    notes: str          # release body (markdown), shown as-is in 릴리즈 노트
+    notes: str          # changes only — see NOTES_MARKER and _collect_notes()
     published: str      # "2026-07-29"
     asset_url: str      # direct download for this platform
     asset_name: str
@@ -133,9 +144,49 @@ def _asset_name() -> str:
     return ASSETS[sys.platform]
 
 
+def _version_key(tag: str) -> tuple[int, ...]:
+    """Sort key for a tag. Anything unparseable sorts last, never crashes."""
+    try:
+        return _parts(tag.lstrip("v"))
+    except ValueError:
+        return ()
+
+
+def _changes_of(payload: dict) -> str:
+    """The user-facing part of one release body (see NOTES_MARKER)."""
+    return (payload.get("body") or "").split(NOTES_MARKER, 1)[0].strip()
+
+
+def _collect_notes(ranked: list[dict], current: str) -> str:
+    """Notes for the newest release plus every skipped one, newest first.
+
+    The app only ever installs the newest build, so someone on 0.0.2 jumping to
+    0.0.4 would otherwise never learn what 0.0.3 changed. The newest release is
+    always included even when it is not newer than ``current`` — 릴리즈 노트 보기
+    has to show something to a user who is already up to date.
+
+    Version headings appear only when there is more than one section; for a
+    single release the sheet header already names the version.
+    """
+    sections = [(str(ranked[0].get("tag_name") or ""), _changes_of(ranked[0]))]
+    for release in ranked[1:]:
+        tag = str(release.get("tag_name") or "")
+        if not is_newer(current, tag.lstrip("v")):
+            break                       # ranked descending — the rest are older
+        sections.append((tag, _changes_of(release)))
+
+    sections = [(tag, body) for tag, body in sections if body]
+    if len(sections) == 1:
+        return sections[0][1]
+    return "\n\n".join(f"## {tag}\n\n{body}" for tag, body in sections)
+
+
 def fetch_latest(timeout: float = 5.0) -> tuple[Release | None, FetchError | None]:
-    """Read the newest published release. ``/releases/latest`` already skips
-    drafts and pre-releases, so whatever comes back is a real one."""
+    """Read the newest published release, with the notes of any skipped ones.
+
+    The list endpoint includes drafts and pre-releases, so unlike
+    ``/releases/latest`` this has to filter them out itself.
+    """
     req = urllib.request.Request(
         RELEASES_API,
         headers={"User-Agent": USER_AGENT, "Accept": "application/vnd.github+json"},
@@ -159,21 +210,30 @@ def fetch_latest(timeout: float = 5.0) -> tuple[Release | None, FetchError | Non
         return None, FetchError("network", str(exc))
 
     try:
-        tag = str(payload["tag_name"])
+        published = [r for r in payload
+                     if not r.get("draft") and not r.get("prerelease") and r.get("tag_name")]
+        ranked = sorted(published, key=lambda r: _version_key(str(r["tag_name"])), reverse=True)
+        if not ranked:
+            return None, FetchError("parse", "발행된 릴리즈가 없습니다.")
+
+        newest = ranked[0]
+        tag = str(newest["tag_name"])
         wanted = _asset_name()
-        asset = next((a for a in payload.get("assets", []) if a.get("name") == wanted), None)
+        asset = next((a for a in newest.get("assets", []) if a.get("name") == wanted), None)
         if asset is None:
             return None, FetchError("no_asset", f"{tag} 릴리즈에 {wanted} 가 없습니다.")
         return Release(
             tag=tag,
             version=tag.lstrip("v"),
-            notes=(payload.get("body") or "").strip(),
-            published=(payload.get("published_at") or "")[:10],
+            notes=_collect_notes(ranked, __version__),
+            published=(newest.get("published_at") or "")[:10],
             asset_url=asset["browser_download_url"],
             asset_name=asset["name"],
             asset_size=int(asset.get("size") or 0),
         ), None
-    except (KeyError, TypeError, ValueError) as exc:
+    # AttributeError included because this endpoint returns a list: an error
+    # object would come back as a dict, and iterating it yields plain strings.
+    except (AttributeError, KeyError, TypeError, ValueError) as exc:
         return None, FetchError("parse", str(exc))
 
 
