@@ -3,13 +3,14 @@ from __future__ import annotations
 
 import json
 import math
+import sys
 
 from PySide6.QtCore import (Property, QDate, QEasingCurve, QObject, QPoint,
                             QPointF, QPropertyAnimation, QRect, QRectF,
                             QRunnable, QSize, Qt, QThreadPool, QTimer, Signal)
 from PySide6.QtGui import (QColor, QCursor, QFont, QFontMetrics, QIcon,
-                           QLinearGradient, QPainter, QPainterPath, QPen,
-                           QPixmap, QPolygonF, QRadialGradient)
+                           QLinearGradient, QPainter, QPainterPath, QPalette,
+                           QPen, QPixmap, QPolygonF, QRadialGradient, QRegion)
 from PySide6.QtWidgets import (QApplication, QCalendarWidget, QDateEdit, QFrame,
                                QGraphicsDropShadowEffect, QHBoxLayout, QLabel,
                                QLayout, QLineEdit, QPushButton, QScrollArea,
@@ -593,6 +594,22 @@ def _snap_value(value, changed: bool) -> QLabel:
     return lab
 
 
+# 라운드 모서리를 만드는 방법이 플랫폼마다 다르다.
+#
+# macOS 는 창을 픽셀 단위 알파로 합성하므로, 투명한 창 안에서 카드가 그린
+# border-radius 의 안티에일리어싱이 그대로 화면까지 간다.
+#
+# Windows 는 이 창의 부분 알파를 블렌딩하지 않는다. 0 과 255 사이의 알파는
+# premultiplied RGB 가 그대로 불투명하게 찍힌다 — 연한 테두리(#d4d9e8)가 42%
+# 덮인 픽셀은 #5e5e5e, 10% 픽셀은 #151717 로 나와서 모서리를 따라 검은 호가
+# 생긴다. 알파 0 만 제대로 뚫리니 사실상 켜고 끄는 마스크로 동작하는 셈이다.
+# theme.py 가 QToolTip 을 각지게 유지하는 것도 같은 현상 때문이다.
+#
+# 그래서 Windows 에서는 창을 불투명하게 두고 라운드 영역으로 오려낸다. 오린
+# 경계에는 안티에일리어싱이 없어 확대하면 계단이 보이지만, 검은 호보다 낫다.
+_CLIP_CORNERS = sys.platform == "win32"
+
+
 class SnapshotPopup(QWidget):
     """Every column's value as of one revision, opened by right-clicking a card.
 
@@ -610,10 +627,18 @@ class SnapshotPopup(QWidget):
         # popup vanishes before it is ever seen.
         super().__init__(parent, Qt.Popup)
         self.setAttribute(Qt.WA_DeleteOnClose)
-        # 창은 투명하게 두고 배경은 안쪽 카드가 그린다. 예전에는 불투명 창을
-        # 라운드 마스크로 오려냈는데 마스크는 안티에일리어싱이 없어 모서리가
-        # 계단처럼 깨졌다. 그림자용 여백만 두지 않으면 반투명 자체는 안전하다.
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        if _CLIP_CORNERS:
+            # 오려낸 경계 바로 안쪽의 반투명 픽셀이 시스템 회색 위에 얹히면
+            # 다크 팔레트에서 밝은 테가 생긴다. 창 배경을 카드와 같은 색으로
+            # 칠해 그 틈이 카드처럼 읽히게 한다.
+            pal = self.palette()
+            pal.setColor(QPalette.Window, QColor(C["surface"]))
+            self.setPalette(pal)
+            self.setAutoFillBackground(True)
+        else:
+            # 창은 투명하게 두고 배경은 안쪽 카드가 그린다 — border-radius 가
+            # 안티에일리어싱된 채로 남는다.
+            self.setAttribute(Qt.WA_TranslucentBackground)
         self._snapshot = record.get("snapshot") or {}
 
         outer = QVBoxLayout(self)
@@ -739,6 +764,18 @@ class SnapshotPopup(QWidget):
     def _copy_all(self) -> None:
         copy_value(json.dumps(self._snapshot, ensure_ascii=False, indent=2),
                    QCursor.pos())
+
+    RADIUS = 12         # QSS 의 QFrame#snapPopup border-radius 와 같아야 한다
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if not _CLIP_CORNERS:
+            return
+        # 창을 카드의 라운드 외곽선으로 오려낸다 — 그러지 않으면 반경 밖의
+        # 칠하지 않은 사각형이 그대로 남는다. 크기가 바뀔 때마다 다시 오린다.
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(self.rect()), self.RADIUS, self.RADIUS)
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
 
     # ── placement ───────────────────────────────────────────────────────
     def pop_at(self, global_pos: QPoint) -> None:
