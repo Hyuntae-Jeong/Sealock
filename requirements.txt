@@ -1,3 +1,6 @@
 # Runtime dependencies for Sealock
 PySide6>=6.6
 PyMySQL>=1.1.0
+# CA bundle for the update check — a packaged build has no trust store of its
+# own to fall back on. See updater._ssl_context().
+certifi>=2024.2.2

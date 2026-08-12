@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import os
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -31,6 +32,11 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
+
+try:
+    import certifi
+except ImportError:                 # source checkout with an older venv
+    certifi = None
 
 from .version import __version__
 
@@ -73,9 +79,30 @@ class FetchError:
     A flat "네트워크를 확인하세요" is wrong for a rate limit (the network is
     fine) and for a missing asset (the release exists but has no build).
     """
-    kind: str           # "network" | "rate_limit" | "http" | "no_asset" | "parse"
+    kind: str           # network | rate_limit | http | no_release | no_asset | parse
     detail: str = ""
     retry_after: int | None = None      # rate_limit only: seconds until reset
+
+
+# ── certificate trust ───────────────────────────────────────────────────
+def _ssl_context() -> ssl.SSLContext | None:
+    """Trust store for every request to GitHub.
+
+    A packaged build carries its own OpenSSL, and that copy looks for CA
+    certificates where it was told at compile time — for the macOS build, a path
+    inside the *build machine's* Python framework that exists on no user's disk.
+    PyInstaller copies the library but nothing to put there, so verification
+    fails, urllib raises URLError exactly as a dead network would, and the app
+    blames a connection that was never the problem. certifi puts the CA bundle
+    inside the app, so point OpenSSL at that instead of at the empty default.
+
+    None means "use the interpreter's own store": running from source, where the
+    system Python resolves certificates on its own, and where certifi may not be
+    installed yet.
+    """
+    if certifi is None:
+        return None
+    return ssl.create_default_context(cafile=certifi.where())
 
 
 # ── version comparison ──────────────────────────────────────────────────
@@ -191,9 +218,13 @@ def fetch_latest(timeout: float = 5.0) -> tuple[Release | None, FetchError | Non
         RELEASES_API,
         headers={"User-Agent": USER_AGENT, "Accept": "application/vnd.github+json"},
     )
+    # Transport and parsing are kept apart on purpose. Reading the body inside
+    # this block would fold a 200 that is not JSON — a captive portal login
+    # page, a proxy's error page — into the same "network" verdict as a dead
+    # connection, and send whoever reads it looking at the wrong layer.
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            payload = json.loads(resp.read().decode("utf-8"))
+        with urllib.request.urlopen(req, timeout=timeout, context=_ssl_context()) as resp:
+            raw = resp.read()
     except urllib.error.HTTPError as exc:
         # A spent rate limit also arrives as 403, but the network is fine and
         # the fix is "wait", not "check your connection" — tell them apart.
@@ -206,15 +237,24 @@ def fetch_latest(timeout: float = 5.0) -> tuple[Release | None, FetchError | Non
         return None, FetchError("http", f"HTTP {exc.code}")
     except urllib.error.URLError as exc:
         return None, FetchError("network", str(exc.reason))
-    except (OSError, ValueError) as exc:  # socket timeout, malformed JSON
+    except OSError as exc:                # socket timeout, connection cut mid-read
         return None, FetchError("network", str(exc))
+
+    try:
+        # UnicodeDecodeError is a ValueError too — a body that is not even utf-8
+        # is the same "this is not the API talking" case as bad JSON.
+        payload = json.loads(raw.decode("utf-8"))
+    except ValueError as exc:
+        return None, FetchError("parse", str(exc))
 
     try:
         published = [r for r in payload
                      if not r.get("draft") and not r.get("prerelease") and r.get("tag_name")]
         ranked = sorted(published, key=lambda r: _version_key(str(r["tag_name"])), reverse=True)
         if not ranked:
-            return None, FetchError("parse", "발행된 릴리즈가 없습니다.")
+            # Understood perfectly — there is simply nothing published yet, which
+            # is not the same as a response we could not read.
+            return None, FetchError("no_release")
 
         newest = ranked[0]
         tag = str(newest["tag_name"])
@@ -241,15 +281,26 @@ FETCH_MESSAGES = {
     "network": "네트워크에 연결할 수 없어 최신 버전을 확인하지 못했습니다.",
     "rate_limit": "GitHub 요청 한도를 초과했습니다. 잠시 후 다시 시도하세요.",
     "http": "GitHub 응답이 올바르지 않아 최신 버전을 확인하지 못했습니다.",
+    "no_release": "아직 발행된 릴리즈가 없습니다.",
     "no_asset": "최신 릴리즈에 이 플랫폼용 파일이 없습니다.",
     "parse": "GitHub 응답을 해석하지 못했습니다.",
 }
+
+
+# Kinds whose sentence cannot say what actually went wrong: "network" reads the
+# same for a dead wifi, a five second timeout and a certificate that would not
+# verify — and only the last one means the build itself is broken. The other
+# kinds already name their cause, so repeating the raw detail only adds noise.
+DETAILED = ("network", "http", "parse")
 
 
 def describe(err: FetchError) -> str:
     base = FETCH_MESSAGES.get(err.kind, err.detail or "최신 버전을 확인하지 못했습니다.")
     if err.kind == "rate_limit" and err.retry_after:
         return f"{base} (약 {max(1, err.retry_after // 60)}분 후)"
+    if err.kind in DETAILED and err.detail:
+        detail = err.detail if len(err.detail) <= 140 else err.detail[:139] + "…"
+        return f"{base}\n({detail})"
     return base
 
 
@@ -281,7 +332,7 @@ def download(release: Release, dest: Path,
     """
     req = urllib.request.Request(release.asset_url, headers={"User-Agent": USER_AGENT})
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with urllib.request.urlopen(req, timeout=15, context=_ssl_context()) as resp:
             total = int(resp.headers.get("Content-Length") or release.asset_size or 0)
             done = 0
             with open(dest, "wb") as fh:

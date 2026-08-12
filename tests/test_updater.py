@@ -9,6 +9,7 @@ Run:  python -m pytest tests          (or)   python tests/test_updater.py
 """
 import json
 import os
+import re
 import sys
 import urllib.error
 
@@ -207,9 +208,26 @@ def test_ci_writes_the_same_marker_the_app_looks_for():
         assert updater.NOTES_MARKER in fh.read()
 
 
+def test_local_and_ci_builds_agree_on_the_python_version():
+    # Same shape of trap as the marker above, one layer down. A local 3.9 build
+    # linked macOS's own LibreSSL while CI's 3.13 packed OpenSSL and its missing
+    # CA path — so the certificate bug could not be reproduced locally at all.
+    # One number, read by .python-version here and by release.yml in CI.
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(root, ".python-version"), encoding="utf-8") as fh:
+        want = fh.read().strip()
+    with open(os.path.join(root, ".github", "workflows", "release.yml"), encoding="utf-8") as fh:
+        pinned = re.findall(r'python-version:\s*"([^"]+)"', fh.read())
+    assert pinned, "release.yml 이 파이썬 버전을 고정하지 않습니다."
+    assert set(pinned) == {want}, f"release.yml={sorted(set(pinned))} vs .python-version={want}"
+
+
 def test_no_published_release_is_an_error_not_a_crash():
+    # Not a "parse" failure: the response was read fine, it just held nothing
+    # publishable — and saying "응답을 해석하지 못했습니다" would misdirect.
     release, err = _fetch(_payload(_release("v9.9.9", draft=True)))
-    assert release is None and err.kind == "parse"
+    assert release is None and err.kind == "no_release"
+    assert "릴리즈가 없습니다" in updater.describe(err)
 
 
 def test_network_failure_is_reported_as_such():
@@ -223,6 +241,35 @@ def test_network_failure_is_reported_as_such():
         _restore(original)
     assert release is None and err.kind == "network"
     assert "네트워크" in updater.describe(err)
+
+
+def test_requests_carry_their_own_trust_store():
+    # The packaged macOS build ships an OpenSSL whose CA path points at the
+    # machine that compiled it, so without a context of our own every HTTPS call
+    # fails verification and reports itself as a dead network. Guard the kwarg —
+    # what it resolves to is certifi's business (updater._ssl_context).
+    seen = {}
+
+    def capture(req, **kwargs):
+        seen.update(kwargs)
+        return _Resp(_payload())
+
+    original = _patched_urlopen(capture)
+    try:
+        updater.fetch_latest()
+    finally:
+        _restore(original)
+    assert "context" in seen
+
+
+def test_the_real_reason_survives_into_the_message():
+    # "네트워크에 연결할 수 없어…" on a working connection sent us reading dylibs.
+    err = updater.FetchError("network", "[SSL: CERTIFICATE_VERIFY_FAILED] 인증서")
+    assert "네트워크" in updater.describe(err)
+    assert "CERTIFICATE_VERIFY_FAILED" in updater.describe(err)
+    # A kind that already names its cause is not padded with a repeat of it.
+    assert updater.describe(updater.FetchError("no_asset", "v9 에 zip 이 없습니다.")) \
+        == updater.FETCH_MESSAGES["no_asset"]
 
 
 def test_rate_limit_is_told_apart_from_a_dead_network():
@@ -246,17 +293,48 @@ def test_rate_limit_is_told_apart_from_a_dead_network():
     assert "한도" in updater.describe(err)
 
 
-def test_malformed_response_does_not_raise():
+def test_a_body_that_is_not_json_is_a_parse_failure_not_a_dead_network():
+    # A captive portal or proxy answers 200 with an HTML login page. The
+    # connection worked; blaming it would send the reader to the wrong layer.
     class _Broken(_Resp):
         def read(self):
-            return b"{ not json"
+            return b"<html>login here</html>"
 
     original = _patched_urlopen(lambda *a, **k: _Broken({}))
     try:
         release, err = updater.fetch_latest()
     finally:
         _restore(original)
-    assert release is None and err.kind in ("network", "parse")
+    assert release is None and err.kind == "parse"
+    assert "네트워크" not in updater.describe(err)
+
+
+def test_a_body_that_is_not_even_utf8_is_a_parse_failure_too():
+    class _Garbage(_Resp):
+        def read(self):
+            return b"\xff\xfe\x00binary"
+
+    original = _patched_urlopen(lambda *a, **k: _Garbage({}))
+    try:
+        release, err = updater.fetch_latest()
+    finally:
+        _restore(original)
+    assert release is None and err.kind == "parse"
+
+
+def test_a_connection_cut_mid_read_is_still_a_network_failure():
+    # The split between transport and parsing must not lose this: the read
+    # itself failing is the connection's fault, not the payload's.
+    class _Cut(_Resp):
+        def read(self):
+            raise OSError("connection reset by peer")
+
+    original = _patched_urlopen(lambda *a, **k: _Cut({}))
+    try:
+        release, err = updater.fetch_latest()
+    finally:
+        _restore(original)
+    assert release is None and err.kind == "network"
 
 
 # ── failure reporting ───────────────────────────────────────────────────
