@@ -25,4 +25,4 @@ CI 가 이 파일을 통째로 새로 쓰므로 릴리즈 빌드에는 이 우�
 """
 import os
 
-__version__ = os.environ.get("SEALOCK_VERSION", "").strip() or "1.0.1+dev"
+__version__ = os.environ.get("SEALOCK_VERSION", "").strip() or "1.0.2+dev"
