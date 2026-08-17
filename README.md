@@ -79,11 +79,16 @@ DB에 연결하지 않고도 첫 화면의 **"샘플 데이터로 둘러보기"*
 - **라이트 / 다크 테마** — 왼쪽 위 **바다사자 아이콘을 클릭**하면 전환됩니다. 고른 테마는 다음 실행에도 유지됩니다.
 - **앱 안에서 업데이트** — **설정**에서 새 버전을 확인하고 앱을 벗어나지 않고 바로 설치합니다. 변경 내역은 [CHANGELOG.md](CHANGELOG.md) 에 있고, 같은 글을 **릴리즈 노트 보기** 로 앱 안에서도 볼 수 있습니다.
 
-<p align="center">
-  <img src="docs/screenshots/04-snapshot.png" alt="리비전 스냅샷 팝업" width="480">
-  &nbsp;
-  <img src="docs/screenshots/05-timeline-dark.png" alt="다크 테마" width="430">
-</p>
+<table>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/04-snapshot.png" alt="리비전 스냅샷 팝업"></td>
+<td width="50%" valign="top"><img src="docs/screenshots/05-timeline-dark.png" alt="다크 테마"></td>
+</tr>
+<tr>
+<td align="center"><b>우클릭 — 그 리비전 시점의 전체 값</b></td>
+<td align="center"><b>다크 테마</b></td>
+</tr>
+</table>
 
 ### 접속 정보는 어떻게 다루나
 
