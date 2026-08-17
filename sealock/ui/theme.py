@@ -109,6 +109,11 @@ DARK = {
 
 MONO = '"Consolas", "D2Coding", "Cascadia Mono", monospace'
 
+# 릴리즈 노트 시트의 좌우 여백. 본문 여백은 QSS(#notesBody)가, 제목 줄은
+# 파이썬 레이아웃이 잡으므로 두 곳이 같은 값을 봐야 글이 한 선에 선다 —
+# update.py 가 이 상수를 가져다 쓴다.
+NOTES_PAD = 26
+
 # Active palette — populated in place by set_palette() so existing references
 # (imports, QPainter widgets) observe swaps without re-importing.
 C: dict[str, str] = {}
@@ -279,8 +284,23 @@ QPushButton#menuItem {{ background: transparent; border: none; border-radius: 7p
     font-size: 13px; font-weight: 500; }}
 QPushButton#menuItem:hover {{ background: {c['surface2']}; }}
 QPushButton#menuItem:disabled {{ color: {c['text_faint']}; }}
-QTextBrowser#notesBody {{ background: {c['surface']}; border: none; color: {c['text_soft']};
+/* 배경은 투명 — 시트 아래쪽 끝이라 불투명하게 칠하면 카드의 둥근 모서리를
+   사각형으로 덮어버린다. */
+QTextBrowser#notesBody {{ background: transparent; border: none; color: {c['text_soft']};
     font-size: 12px; }}
+/* 릴리즈 노트 시트 전용: 제목 줄과 같은 선(NOTES_PAD)에 본문을 세운다. 업데이트
+   시트의 노트는 이미 바깥 레이아웃이 여백을 주므로 여기 해당하지 않는다. */
+QTextBrowser#notesBody[roomy="true"] {{ padding: 0 {NOTES_PAD}px; }}
+/* macOS 신호등 스타일 닫기 점. 두 테마 모두 같은 빨강을 쓴다 — 시스템 창
+   버튼과 같은 색이어야 "닫기" 로 읽힌다. */
+/* 크기를 여기서도 못박는다: 공용 QPushButton 규칙의 min-height 가 setFixedSize
+   보다 세서, 두지 않으면 점이 아니라 세로로 늘어난 알약이 된다. QSS 의
+   min/max 는 테두리 안쪽 기준이라 12 + 1px 테두리 둘 = 14 로 맞아떨어진다. */
+QPushButton#closeDot {{ background: #ff5f57; border: 1px solid #e0443e; border-radius: 7px;
+    min-width: 12px; max-width: 12px; min-height: 12px; max-height: 12px;
+    color: #6b1710; font-size: 9px; font-weight: 700; padding: 0; text-align: center; }}
+QPushButton#closeDot:hover {{ background: #ff6f68; }}
+QPushButton#closeDot:pressed {{ background: #e0443e; }}
 QProgressBar {{ background: {c['surface3']}; border: none; border-radius: 3px; }}
 QProgressBar::chunk {{ background: {c['primary']}; border-radius: 3px; }}
 QFrame#snapHead {{ background: transparent; border: none; border-bottom: 1px solid {c['border']}; }}

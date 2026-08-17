@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel,
 
 from .. import updater
 from ..version import __version__
+from .theme import NOTES_PAD
 from .widgets import button, run_async
 
 
@@ -25,6 +26,32 @@ def _label(text: str, obj: str = "", wrap: bool = False) -> QLabel:
 
 
 PAD = 18            # 헤더·본문·푸터가 공유하는 좌우 여백
+
+
+class _CloseDot(QPushButton):
+    """macOS 신호등 스타일 닫기 점.
+
+    커서를 올리면 ✕ 가 드러난다 — 색만 있는 점은 눌러도 되는 것인지 알기 어렵고,
+    항상 ✕ 를 띄워두면 조용해야 할 자리가 시끄럽다. QSS 로는 글자를 바꿀 수
+    없어서 enter/leave 에서 직접 넣고 뺀다.
+    """
+
+    def __init__(self, slot):
+        super().__init__("")
+        self.setObjectName("closeDot")
+        self.setFixedSize(14, 14)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFocusPolicy(Qt.NoFocus)     # Tab 순서에 끼어들지 않는다
+        self.setToolTip("닫기")
+        self.clicked.connect(slot)
+
+    def enterEvent(self, e):
+        self.setText("✕")
+        super().enterEvent(e)
+
+    def leaveEvent(self, e):
+        self.setText("")
+        super().leaveEvent(e)
 
 
 class _Sheet(QWidget):
@@ -69,17 +96,35 @@ class _Sheet(QWidget):
             self.move(geo.center().x() - self.width() // 2,
                       geo.center().y() - self.height() // 2)
 
-    def _head(self, title: str, subtitle: str) -> None:
+    def _head(self, title: str, subtitle: str,
+              margins: tuple[int, int, int, int] = (PAD, 15, PAD, 13),
+              closable: bool = False) -> None:
         head = QFrame()
         head.setObjectName("snapHead")
-        hv = QVBoxLayout(head)
-        hv.setContentsMargins(PAD, 15, PAD, 13)
-        hv.setSpacing(3)
+        hv = QHBoxLayout(head)
+        hv.setContentsMargins(*margins)
+        hv.setSpacing(10)
+        text = QVBoxLayout()
+        text.setContentsMargins(0, 0, 0, 0)
+        text.setSpacing(3)
         self.title_lab = _label(title, "cardTitle", wrap=True)
         self.sub_lab = _label(subtitle, "emptySub", wrap=True)
-        hv.addWidget(self.title_lab)
-        hv.addWidget(self.sub_lab)
+        text.addWidget(self.title_lab)
+        text.addWidget(self.sub_lab)
+        hv.addLayout(text, 1)
+        if closable:
+            # 제목 첫 줄과 눈높이를 맞춘다 — 부제까지 두 줄이어도 위에 붙어 있다.
+            hv.addWidget(_CloseDot(self.close), 0, Qt.AlignTop)
         self._v.addWidget(head)
+
+    def keyPressEvent(self, e):
+        # 창틀이 없는 창이라 Esc 를 직접 받는다. 닫기 점 하나뿐인 시트에서는
+        # 이게 유일한 키보드 탈출구다. close() 를 거치므로 내려받는 중이라면
+        # UpdateSheet.closeEvent 가 평소처럼 취소로 처리한다.
+        if e.key() == Qt.Key_Escape:
+            self.close()
+            return
+        super().keyPressEvent(e)
 
     def _foot(self) -> QHBoxLayout:
         foot = QFrame()
@@ -109,9 +154,13 @@ class _NotesView(QTextBrowser):
     모자란다. 그래서 처음 화면에 붙을 때 한 번 다시 맞춘다.
     """
 
-    def __init__(self, markdown: str, width: int, max_height: int):
+    def __init__(self, markdown: str, width: int, max_height: int, roomy: bool = False):
         super().__init__()
         self.setObjectName("notesBody")
+        # roomy 는 좌우 여백을 QSS 에 맡긴다는 표시 — 시트 폭 그대로 놓이는
+        # 릴리즈 노트용이다. 업데이트 시트의 노트는 바깥 레이아웃이 이미 여백을
+        # 주므로 켜지 않는다 (켜면 제목보다 안쪽으로 밀려 줄이 어긋난다).
+        self.setProperty("roomy", roomy)
         self.setFrameShape(QFrame.NoFrame)
         self.setOpenExternalLinks(True)
         self.setFixedWidth(width)
@@ -132,7 +181,12 @@ class _NotesView(QTextBrowser):
 
 
 class NotesSheet(_Sheet):
-    """최신 릴리즈 노트 본문만 앱 안에서 보여준다 (브라우저를 열지 않는다)."""
+    """최신 릴리즈 노트 본문만 앱 안에서 보여준다 (브라우저를 열지 않는다).
+
+    읽으라고 띄우는 창이라 다른 시트보다 여백을 넉넉히 준다. 아래 버튼 줄도
+    두지 않는다 — 누를 것이 "닫기" 하나뿐인데 줄 하나를 통째로 쓰면 본문만
+    좁아진다. 그 자리를 오른쪽 위 닫기 점이 대신한다 (Esc 도 받는다).
+    """
 
     WIDTH = 460
     MAX_BODY = 320
@@ -140,9 +194,16 @@ class NotesSheet(_Sheet):
     def __init__(self, release: updater.Release, parent: QWidget | None = None):
         super().__init__(parent, self.WIDTH)
         self._head(f"릴리즈 노트  ·  {release.tag}",
-                   f"{release.published} 릴리즈" if release.published else "")
-        self._v.addWidget(_NotesView(release.notes, self.WIDTH, self.MAX_BODY))
-        self._foot().addWidget(self._action("닫기", "ghost", self.close))
+                   f"{release.published} 릴리즈" if release.published else "",
+                   margins=(NOTES_PAD, 20, NOTES_PAD, 17), closable=True)
+        # 본문의 좌우 여백은 QSS(#notesBody)가, 위아래는 이 컨테이너가 잡는다.
+        # 높이를 여기서 주면 _NotesView 의 높이 계산은 문서 크기만 보면 된다.
+        body = QWidget()
+        bv = QVBoxLayout(body)
+        bv.setContentsMargins(0, 12, 0, 22)
+        bv.setSpacing(0)
+        bv.addWidget(_NotesView(release.notes, self.WIDTH, self.MAX_BODY, roomy=True))
+        self._v.addWidget(body)
 
 
 class UpdateSheet(_Sheet):

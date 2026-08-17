@@ -15,10 +15,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from PySide6.QtCore import QDate, QPoint, Qt  # noqa: E402
 from PySide6.QtGui import QContextMenuEvent  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtWidgets import QApplication, QFrame  # noqa: E402
 
-from sealock import demo, services  # noqa: E402
+from sealock import demo, services, updater  # noqa: E402
 from sealock.ui.theme import QSS  # noqa: E402
+from sealock.ui.update import NotesSheet, UpdateSheet, _CloseDot  # noqa: E402
 from sealock.ui.widgets import SnapshotPopup  # noqa: E402
 from sealock.ui.window import MainWindow  # noqa: E402
 
@@ -52,6 +53,26 @@ def main() -> int:
     click(conn.gear_btn, conn.gear_btn.rect().center())
     click(conn.gear_btn, conn.gear_btn.rect().center())
     assert not panel.isVisible(), "설정 버튼이 닫았다가 다시 열었다"
+
+    # 업데이트 시트 두 종류. 네트워크 없이 만들어 본다 — 릴리즈 노트 시트는
+    # 아래 버튼 줄 대신 오른쪽 위 닫기 점 하나로 닫으므로, 그 점이 실제로
+    # 붙어 있는지까지 확인한다 (없으면 닫을 방법이 Esc 뿐인 창이 된다).
+    release = updater.Release(
+        tag="v9.9.9", version="9.9.9", notes="### 개선\n\n* 여백을 넉넉하게.\n",
+        published="2026-08-17", asset_url="https://example.com/Sealock-macOS.zip",
+        asset_name="Sealock-macOS.zip", asset_size=1234)
+    notes_sheet = NotesSheet(release)
+    notes_sheet.center_on(win)
+    app.processEvents()
+    assert notes_sheet.findChild(_CloseDot) is not None, "릴리즈 노트 시트에 닫기 점이 없다"
+    assert notes_sheet.findChild(QFrame, "snapFoot") is None, "버튼 줄을 걷어내지 못했다"
+    notes_sheet.close()
+    update_sheet = UpdateSheet(release)
+    update_sheet.center_on(win)
+    app.processEvents()
+    assert update_sheet.findChild(QFrame, "snapFoot") is not None, "업데이트 시트에는 버튼 줄이 있어야 한다"
+    update_sheet.close()
+    app.processEvents()
 
     win.goto(1)
     win.page_table._fill_chips([f"sample_{i}_aud" for i in range(30)] + demo.tables())
