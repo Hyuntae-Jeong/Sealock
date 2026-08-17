@@ -7,13 +7,14 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QPainter, QTextCursor
 from PySide6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel,
                                QProgressBar, QPushButton, QTextBrowser,
                                QVBoxLayout, QWidget)
 
 from .. import updater
 from ..version import __version__
-from .theme import NOTES_PAD
+from .theme import C, NOTES_PAD
 from .widgets import button, run_async
 
 
@@ -26,6 +27,7 @@ def _label(text: str, obj: str = "", wrap: bool = False) -> QLabel:
 
 
 PAD = 18            # 헤더·본문·푸터가 공유하는 좌우 여백
+VERSION_GAP = 26    # 노트에서 버전이 바뀌는 자리의 간격 (그 한가운데가 구분선)
 
 
 class _CloseDot(QPushButton):
@@ -167,11 +169,54 @@ class _NotesView(QTextBrowser):
         self._max = max_height
         self._settled = False
         self.setMarkdown(markdown or "_릴리즈 노트가 비어 있습니다._")
+        self._space_versions()
         self.document().adjustSize()        # 붙기 전 근사치 (창이 납작해 보이지 않게)
         self._fit()
 
     def _fit(self) -> None:
         self.setFixedHeight(int(min(self._max, self.document().size().height() + 22)))
+
+    # ── 버전 사이 경계 ──────────────────────────────────────────────
+    def _version_heads(self):
+        """첫 버전을 뺀 버전 머리글 블록들 — 그 위가 버전이 바뀌는 자리다.
+
+        건너뛴 버전이 있을 때만 머리글이 붙으므로(updater._collect_notes),
+        한 버전짜리 노트에서는 아무것도 나오지 않는다.
+        """
+        block, first = self.document().begin(), True
+        while block.isValid():
+            if block.blockFormat().headingLevel() == 2:
+                if not first:
+                    yield block
+                first = False
+            block = block.next()
+
+    def _space_versions(self) -> None:
+        """버전이 바뀌는 자리를 벌린다. 그 한가운데를 paintEvent 가 선으로 메운다."""
+        cursor = QTextCursor(self.document())
+        for block in self._version_heads():
+            fmt = block.blockFormat()
+            fmt.setTopMargin(VERSION_GAP)
+            cursor.setPosition(block.position())
+            cursor.setBlockFormat(fmt)
+
+    def paintEvent(self, event):
+        """버전 경계에 구분선을 긋는다.
+
+        마크다운의 `---` 를 쓰면 문서 안에 남지만, Qt 가 그리는 그 선은 본문
+        글자색을 따라가 너무 진하고 팔레트로도 char format 으로도 바뀌지 않는다.
+        여기서 직접 그으면 테마의 테두리 색을 그대로 쓸 수 있고, 원본 노트
+        (릴리즈 본문 = CHANGELOG)에 표시용 문자를 섞지 않아도 된다.
+        """
+        super().paintEvent(event)
+        layout = self.document().documentLayout()
+        offset = -self.verticalScrollBar().value()
+        painter = QPainter(self.viewport())
+        painter.setPen(QColor(C["border"]))
+        for block in self._version_heads():
+            top = layout.blockBoundingRect(block).top() + offset
+            y = int(top - VERSION_GAP / 2)
+            painter.drawLine(0, y, self.viewport().width(), y)
 
     def showEvent(self, event):
         super().showEvent(event)

@@ -19,7 +19,8 @@ from PySide6.QtWidgets import QApplication, QFrame  # noqa: E402
 
 from sealock import demo, services, updater  # noqa: E402
 from sealock.ui.theme import QSS  # noqa: E402
-from sealock.ui.update import NotesSheet, UpdateSheet, _CloseDot  # noqa: E402
+from sealock.ui.update import (NotesSheet, UpdateSheet, _CloseDot,  # noqa: E402
+                               _NotesView)
 from sealock.ui.widgets import SnapshotPopup  # noqa: E402
 from sealock.ui.window import MainWindow  # noqa: E402
 
@@ -57,16 +58,30 @@ def main() -> int:
     # 업데이트 시트 두 종류. 네트워크 없이 만들어 본다 — 릴리즈 노트 시트는
     # 아래 버튼 줄 대신 오른쪽 위 닫기 점 하나로 닫으므로, 그 점이 실제로
     # 붙어 있는지까지 확인한다 (없으면 닫을 방법이 Esc 뿐인 창이 된다).
-    release = updater.Release(
-        tag="v9.9.9", version="9.9.9", notes="### 개선\n\n* 여백을 넉넉하게.\n",
-        published="2026-08-17", asset_url="https://example.com/Sealock-macOS.zip",
-        asset_name="Sealock-macOS.zip", asset_size=1234)
-    notes_sheet = NotesSheet(release)
+    def _release(notes):
+        return updater.Release(
+            tag="v9.9.9", version="9.9.9", notes=notes, published="2026-08-17",
+            asset_url="https://example.com/Sealock-macOS.zip",
+            asset_name="Sealock-macOS.zip", asset_size=1234)
+
+    two_versions = _release("## v9.9.9\n\n### 개선\n\n* 여백을 넉넉하게.\n\n"
+                            "## v9.9.8\n\n### 수정\n\n* 지난 버전에서 고친 것.\n")
+    release = _release("### 개선\n\n* 여백을 넉넉하게.\n")
+    notes_sheet = NotesSheet(two_versions)
     notes_sheet.center_on(win)
     app.processEvents()
     assert notes_sheet.findChild(_CloseDot) is not None, "릴리즈 노트 시트에 닫기 점이 없다"
     assert notes_sheet.findChild(QFrame, "snapFoot") is None, "버튼 줄을 걷어내지 못했다"
+    # 버전 경계 = 구분선을 긋는 자리. 두 버전이면 하나, 한 버전이면 없어야 한다.
+    view = notes_sheet.findChild(_NotesView)
+    assert len(list(view._version_heads())) == 1, "버전 경계를 찾지 못했다"
     notes_sheet.close()
+    single = NotesSheet(release)
+    single.center_on(win)
+    app.processEvents()
+    assert not list(single.findChild(_NotesView)._version_heads()), \
+        "한 버전짜리 노트에 구분선 자리가 생겼다"
+    single.close()
     update_sheet = UpdateSheet(release)
     update_sheet.center_on(win)
     app.processEvents()

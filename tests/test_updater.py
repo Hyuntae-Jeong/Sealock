@@ -198,6 +198,22 @@ def test_newest_is_decided_by_version_not_list_order():
     assert err is None and release.tag == "v0.0.10"
 
 
+def test_releases_from_before_the_marker_do_not_show_their_download_table():
+    # v0.0.3 이하의 본문은 다운로드 표가 전부다 — 그 시절 변경 사항은 CHANGELOG
+    # 에만 있었다. 자를 지점(마커)이 없다고 본문을 통째로 실으면, 노트를 열었을
+    # 때 "변경 사항" 자리에 플랫폼 표와 Gatekeeper 안내가 나온다.
+    legacy = _release("v0.0.3", body="## 다운로드\n\n| 플랫폼 | 파일 |\n|---|---|\n\n"
+                                     "**Full Changelog**: https://example.com/compare")
+    assert updater._changes_of(legacy) == ""
+
+    newest = _release("v9.9.9", body=f"### 수정\n\n* 고쳤습니다.\n\n{updater.NOTES_MARKER}\n\n"
+                                     "## 다운로드\n\n| 플랫폼 |\n")
+    notes = updater._collect_notes([newest, legacy], "0.0.2")
+    assert "고쳤습니다" in notes
+    # 남는 게 없는 버전은 목록에서 통째로 빠진다 — 제목만 덩그러니 남지 않는다.
+    assert "다운로드" not in notes and "v0.0.3" not in notes
+
+
 def test_ci_writes_the_same_marker_the_app_looks_for():
     # Two files have to agree on one string. If CI's literal drifts, the app
     # stops finding it and silently shows the download table as "변경 사항"

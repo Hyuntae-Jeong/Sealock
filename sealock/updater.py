@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import ssl
 import subprocess
 import sys
@@ -56,9 +57,15 @@ ASSETS = {"darwin": "Sealock-macOS.zip", "win32": "Sealock-Windows.zip"}
 # the download table and Gatekeeper note, for first-time visitors of the release
 # page, and the app drops them. CI writes the marker (release.yml, "Build release
 # body from CHANGELOG"), so the string must stay identical on both sides.
-# Releases published before this convention have no marker; splitting on a string
-# that is not there simply keeps the whole body.
 NOTES_MARKER = "<!-- github-only -->"
+
+# 마커 도입 전(v0.0.3 이하) 릴리즈에는 자를 지점이 없다. 그 시절 본문은 다운로드
+# 표가 전부였고 — 변경 사항은 CHANGELOG 에만 있었다 — 마커를 못 찾으면 본문이
+# 통째로 "변경 사항" 으로 올라와, 노트를 열어 보면 플랫폼 표와 Gatekeeper 안내가
+# 나온다. 그 시절 본문도 이 제목으로 시작하므로 여기서 끊는다. 남는 게 없으면
+# _collect_notes 가 빈 섹션을 걸러 그 버전은 목록에서 조용히 빠진다 — 보여줄
+# 변경 사항이 애초에 없던 버전이니 그게 맞다.
+LEGACY_TAIL = re.compile(r"^##\s*다운로드\s*$", re.M)
 
 
 @dataclass(frozen=True)
@@ -180,8 +187,11 @@ def _version_key(tag: str) -> tuple[int, ...]:
 
 
 def _changes_of(payload: dict) -> str:
-    """The user-facing part of one release body (see NOTES_MARKER)."""
-    return (payload.get("body") or "").split(NOTES_MARKER, 1)[0].strip()
+    """The user-facing part of one release body (see NOTES_MARKER, LEGACY_TAIL)."""
+    body = payload.get("body") or ""
+    if NOTES_MARKER in body:
+        return body.split(NOTES_MARKER, 1)[0].strip()
+    return LEGACY_TAIL.split(body, maxsplit=1)[0].strip()
 
 
 def _collect_notes(ranked: list[dict], current: str) -> str:
