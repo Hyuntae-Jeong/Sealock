@@ -357,12 +357,18 @@ class SettingsPanel(QFrame):
         return b
 
     def toggle(self) -> None:
-        """설정 버튼 전용 여닫기. 바깥을 클릭해도 닫히지 않는다."""
+        """설정 버튼으로 여닫기. 바깥 배경을 눌러도 닫힌다 (ConnectionPage)."""
         if self.isVisible():
             self.hide()
         else:
             self._reset_status()
             self.show()
+
+    def mousePressEvent(self, e):
+        # 패널 안을 누른 것은 "바깥 클릭" 이 아니다. QFrame 은 마우스 이벤트를
+        # 그냥 흘려보내서 부모인 페이지까지 올라가는데, 페이지는 그걸 배경
+        # 클릭으로 읽고 방금 연 패널을 도로 닫아버린다.
+        e.accept()
 
     def _reset_status(self) -> None:
         """열 때마다 버전 — 업데이트할 수 없는 빌드면 그 이유까지 — 를 보여준다."""

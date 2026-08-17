@@ -12,8 +12,9 @@ from datetime import timedelta
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from PySide6.QtCore import QDate, QPoint  # noqa: E402
+from PySide6.QtCore import QDate, QPoint, Qt  # noqa: E402
 from PySide6.QtGui import QContextMenuEvent  # noqa: E402
+from PySide6.QtTest import QTest  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from sealock import demo, services  # noqa: E402
@@ -30,6 +31,27 @@ def main() -> int:
     win.show()
     st = win.state
     st.demo = True
+
+    # 설정 패널 여닫기. 배경 클릭으로 닫는 규칙은 "아무도 안 가져간 클릭 = 배경"
+    # 이라는 전제 위에 서 있어서, 중간의 위젯 하나가 이벤트를 삼키거나 흘려보내는
+    # 순간 조용히 깨진다 — 눈으로만 확인할 수 없으니 여기서 눌러 본다.
+    conn, panel = win.page_conn, win.page_conn.settings_panel
+
+    def click(w, pos):
+        QTest.mouseClick(w, Qt.LeftButton, Qt.KeyboardModifiers(), pos)
+        app.processEvents()
+
+    click(conn.gear_btn, conn.gear_btn.rect().center())
+    assert panel.isVisible(), "설정 버튼으로 패널이 열리지 않았다"
+    click(panel, QPoint(panel.width() // 2, 40))
+    assert panel.isVisible(), "패널 안을 눌렀는데 닫혔다"
+    click(conn.host, conn.host.rect().center())
+    assert panel.isVisible(), "입력란을 눌렀는데 패널이 닫혔다"
+    click(conn, QPoint(12, 12))
+    assert not panel.isVisible(), "배경을 눌렀는데 패널이 닫히지 않았다"
+    click(conn.gear_btn, conn.gear_btn.rect().center())
+    click(conn.gear_btn, conn.gear_btn.rect().center())
+    assert not panel.isVisible(), "설정 버튼이 닫았다가 다시 열었다"
 
     win.goto(1)
     win.page_table._fill_chips([f"sample_{i}_aud" for i in range(30)] + demo.tables())

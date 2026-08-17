@@ -146,6 +146,17 @@ class ConnectionPage(QWidget):
     def _toggle_settings(self) -> None:
         self.settings_panel.toggle()
 
+    def mousePressEvent(self, e):
+        """빈 배경을 누르면 설정 패널을 접는다.
+
+        여기까지 올라온 클릭은 아무도 가져가지 않은 클릭 — 즉 배경이다. 입력란도
+        버튼도 설정 패널 자신도 자기 이벤트를 삼키므로, 폼을 만지는 도중에 패널이
+        갑자기 닫히며 레이아웃이 흔들리는 일은 없다. 설정 버튼 역시 마찬가지라
+        닫자마자 다시 열리는 깜빡임도 생기지 않는다.
+        """
+        self.settings_panel.hide()
+        super().mousePressEvent(e)
+
     def _payload(self) -> dict:
         return {
             "host": self.host.text().strip() or "localhost",
