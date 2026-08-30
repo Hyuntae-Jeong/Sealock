@@ -24,7 +24,7 @@ import ctypes
 import ctypes.util
 import sys
 
-from PySide6.QtCore import QEvent, QObject, Qt
+from PySide6.QtCore import QEvent, QObject, QPoint, Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QMainWindow, QWidget
 
@@ -75,6 +75,13 @@ class _Titlebar(QObject):
     전체화면을 오가는 길만은 이 필터로 못 잡는다. AppKit 이 애니메이션이 *끝난*
     뒤에 마스크를 되돌려 놓는데 그 시점에는 Qt 이벤트가 더 오지 않아서다 —
     거기는 ``_watch_fullscreen_exit`` 가 맡는다.
+
+    창을 옮기는 일은 ``QWindow.startSystemMove()`` 에 넘기지 않고 직접 한다.
+    그 API 는 드래그를 통째로 AppKit 에 넘기는데, AppKit 이 자기 루프 안에서
+    버튼을 뗀 이벤트까지 삼켜 버려 Qt 는 버튼이 아직 눌린 줄 안다. 그러면 손을
+    떼고 같은 자리에서 다시 누른 두 번째 클릭이 '누름'으로 보이지 않아 창이
+    따라오지 않는다 — 마우스를 움직여 Qt 의 상태가 다시 맞춰져야 풀린다.
+    여기서 직접 옮기면 누름·이동·뗌이 전부 Qt 를 거치므로 어긋날 자리가 없다.
     """
 
     _RESTORE_ON = {QEvent.WindowStateChange, QEvent.Resize}
@@ -82,6 +89,8 @@ class _Titlebar(QObject):
     def __init__(self, window: QMainWindow):
         super().__init__(window)
         self._window = window
+        self._grab: QPoint | None = None    # 누른 순간의 커서 위치 (전역)
+        self._origin: QPoint | None = None  # 그때의 창 위치
 
     def eventFilter(self, obj: QObject, event: QEvent) -> bool:
         if obj is self._window:
@@ -92,12 +101,24 @@ class _Titlebar(QObject):
                 # 그때는 마스크가 서 있으므로 한 번에 멈춘다.
                 _strip_native_titlebar(self._window)
             return False
-        if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
-            handle = self._window.windowHandle()
-            if handle is not None:
-                handle.startSystemMove()
-                return True
-        elif event.type() == QEvent.MouseButtonDblClick and event.button() == Qt.LeftButton:
+
+        kind = event.type()
+        if kind == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
+            # 여기서 이벤트를 받아 두어야 이어지는 이동·뗌도 톱바로 온다.
+            self._grab = event.globalPosition().toPoint()
+            self._origin = self._window.pos()
+            return True
+        if (kind == QEvent.MouseMove and self._grab is not None
+                and event.buttons() & Qt.LeftButton):
+            # 창이 커서 밑에서 움직이므로 창 기준 좌표는 못 쓴다 — 전역 좌표의
+            # 이동량만 더한다.
+            self._window.move(self._origin + event.globalPosition().toPoint() - self._grab)
+            return True
+        if kind == QEvent.MouseButtonRelease and event.button() == Qt.LeftButton:
+            self._grab = self._origin = None
+            return True
+        if kind == QEvent.MouseButtonDblClick and event.button() == Qt.LeftButton:
+            self._grab = self._origin = None
             if self._window.isMaximized():
                 self._window.showNormal()
             else:
