@@ -88,6 +88,7 @@ sealock/
     theme.py           라이트·다크 팔레트 + 전역 QSS
     widgets.py         재사용 위젯 (스텝퍼, 타임라인 노드, 값 pill, 비동기 워커)
     window.py          메인 윈도우 + 3단계 페이지
+    macos.py           macOS 창 꾸밈 — 제목표시줄을 지우고 신호등만 남긴다
     splash.py          시작 스플래시
     update.py          설정 패널 + 업데이트/릴리즈 노트 창
 scripts/

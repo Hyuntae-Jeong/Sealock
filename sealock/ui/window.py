@@ -14,7 +14,7 @@ from .. import demo, services, settings, updater
 from ..resources import app_icon
 from ..services import AppState
 from ..version import __version__
-from . import theme
+from . import macos, theme
 from .update import SettingsPanel
 from .widgets import (BrandMark, FlowLayout, Stepper, TimelineCard, button,
                       changeset_summary_bar, clear_layout, date_edit, field,
@@ -1089,6 +1089,10 @@ class MainWindow(QMainWindow):
         self.page_hist.back.connect(lambda: self.goto(1))
         self.page_hist.error.connect(lambda m: self.toast(m, True))
         self.stepper.step_clicked.connect(self._on_step_clicked)
+
+        # macOS 에서는 제목표시줄을 지우고 신호등만 남긴다 — 톱바가 그 자리를
+        # 대신하므로 창 이름이 두 번 나오지 않고 세로 32pt 를 되찾는다.
+        macos.hide_titlebar(self, self._topbar)
 
     def _build_topbar(self) -> QFrame:
         topbar = QFrame()
