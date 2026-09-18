@@ -1131,6 +1131,13 @@ class MainWindow(QMainWindow):
         """Cross-fade between light and dark: snapshot the current look, swap the
         palette underneath, then dissolve the snapshot away while the toggle
         button animates a sunrise / sunset above it."""
+        # Clicks arrive faster than the transition runs, so ignore them until
+        # the orbit lands — restarting it mid-turn freezes the sun and the moon
+        # at a half-way angle. The orbit is the longest leg of the transition
+        # (1050ms against the 900ms cross-fade), so it gauges the whole thing.
+        if self._brand.busy():
+            return
+
         name = "light" if theme.is_dark() else "dark"
 
         # 1. snapshots of the old look, captured before the swap. The toggle's

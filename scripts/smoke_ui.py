@@ -5,6 +5,7 @@ Run:  python scripts/smoke_ui.py
 It sets QT_QPA_PLATFORM=offscreen so it works in CI / over SSH with no screen.
 Exit 0 = the UI builds and renders; any construction error raises and fails.
 """
+import math
 import os
 import sys
 from datetime import timedelta
@@ -17,8 +18,8 @@ from PySide6.QtGui import QContextMenuEvent  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
 from PySide6.QtWidgets import QApplication, QFrame  # noqa: E402
 
-from sealock import demo, services, updater  # noqa: E402
-from sealock.ui.theme import QSS  # noqa: E402
+from sealock import demo, services, settings, updater  # noqa: E402
+from sealock.ui import theme  # noqa: E402
 from sealock.ui.update import (NotesSheet, UpdateSheet, _CloseDot,  # noqa: E402
                                _NotesView)
 from sealock.ui.widgets import SnapshotPopup  # noqa: E402
@@ -27,7 +28,7 @@ from sealock.ui.window import MainWindow  # noqa: E402
 
 def main() -> int:
     app = QApplication([])
-    app.setStyleSheet(QSS)
+    app.setStyleSheet(theme.QSS)
 
     win = MainWindow()
     win.show()
@@ -54,6 +55,25 @@ def main() -> int:
     click(conn.gear_btn, conn.gear_btn.rect().center())
     click(conn.gear_btn, conn.gear_btn.rect().center())
     assert not panel.isVisible(), "설정 버튼이 닫았다가 다시 열었다"
+
+    # 테마 토글은 해와 달이 반 바퀴를 도는 애니메이션이다. 그 도중에 들어온
+    # 클릭을 흘려보내지 않으면 궤도가 중간에 다시 출발해 두 천체가 어정쩡한
+    # 각도에 굳어 버린다 — 화면을 봐도 "원래 저런가" 싶은 고장이라 여기서 친다.
+    saved_theme, brand = settings.load_theme(), win._brand
+    center = brand.rect().center()
+    click(brand, center)
+    assert theme.is_dark(), "첫 클릭에 어두운 테마로 넘어가지 않았다"
+    assert brand.busy(), "전환 애니메이션이 시작되지 않았다"
+    click(brand, center)
+    assert theme.is_dark(), "전환 도중의 두 번째 클릭이 테마를 되돌렸다"
+    QTest.qWait(1200)                   # 궤도가 내려앉기를 기다린다
+    assert not brand.busy(), "전환이 끝났는데 아직 도는 중이다"
+    assert abs(brand._base - math.pi) < 1e-6, \
+        f"해와 달이 반 바퀴가 아닌 {brand._base:.3f}rad 에 멈췄다"
+    click(brand, center)                # 밝은 테마로 되돌린다
+    QTest.qWait(1200)
+    assert not theme.is_dark(), "다시 눌렀는데 밝은 테마로 돌아오지 않았다"
+    settings.save_theme(saved_theme)    # 스모크 테스트가 취향을 덮어쓰지 않게
 
     # 업데이트 시트 두 종류. 네트워크 없이 만들어 본다 — 릴리즈 노트 시트는
     # 아래 버튼 줄 대신 오른쪽 위 닫기 점 하나로 닫으므로, 그 점이 실제로

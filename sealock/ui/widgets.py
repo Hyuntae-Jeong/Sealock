@@ -5,9 +5,10 @@ import json
 import math
 import sys
 
-from PySide6.QtCore import (Property, QDate, QEasingCurve, QObject, QPoint,
-                            QPointF, QPropertyAnimation, QRect, QRectF,
-                            QRunnable, QSize, Qt, QThreadPool, QTimer, Signal)
+from PySide6.QtCore import (Property, QAbstractAnimation, QDate, QEasingCurve,
+                            QObject, QPoint, QPointF, QPropertyAnimation,
+                            QRect, QRectF, QRunnable, QSize, Qt, QThreadPool,
+                            QTimer, Signal)
 from PySide6.QtGui import (QColor, QCursor, QFont, QFontMetrics, QIcon,
                            QLinearGradient, QPainter, QPainterPath, QPalette,
                            QPen, QPixmap, QPolygonF, QRadialGradient, QRegion)
@@ -363,6 +364,12 @@ class BrandMark(QWidget):
             self._anim.setStartValue(self._base)
             self._anim.setEndValue(self._base + math.pi)
             self._anim.start()
+
+    def busy(self) -> bool:
+        """True while the sunrise / sunset is still crossing the sky. The host
+        swallows clicks until it lands: restarting the orbit mid-turn leaves the
+        sun and the moon frozen at whatever angle they had reached."""
+        return self._anim.state() == QAbstractAnimation.Running
 
     def _get_angle(self) -> float:
         return self._base
