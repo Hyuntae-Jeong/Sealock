@@ -7,7 +7,7 @@ Sealock의 버전별 변경 사항입니다. **이 파일이 릴리즈 노트의
 
 이 파일을 쓰는 규칙은 [CONTRIBUTING.md](CONTRIBUTING.md#changelog-쓰는-법) 에 있습니다.
 
-## [미출시]
+## [1.1.0] — 2026-10-19
 
 ### 개선
 
